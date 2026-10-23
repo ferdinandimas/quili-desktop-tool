@@ -401,21 +401,22 @@ enum ThreadReader {
             downSteps += 1
         }
 
-        // Done: scroll back to the top, where the thread starts. Big wheel moves while the items still shift, then the
-        // normal step to be sure of the top.
+        // Done: scroll back to the top, where the thread starts, and stop. Nothing is read here, so there is no
+        // validating, undoing or retrying (that is what made the pane shuffle up and down): only big moves towards the
+        // top until the items stop shifting.
         if downSteps > 0 {
-            if wheelUsable {
-                for _ in 0..<maxScrollSteps {
-                    let before = positions()
+            for _ in 0..<maxScrollSteps {
+                let before = positions()
+                if wheelUsable {
                     smoothScroll(step * 3 * wheelSign)
                     Thread.sleep(forTimeInterval: 0.25)
-                    if positions() == before { break }
+                } else if let list, let first = AX.children(list).first,
+                          AXUIElementPerformAction(first, "AXScrollToVisible" as CFString) == .success {
+                    Thread.sleep(forTimeInterval: 0.2)
+                } else {
+                    break
                 }
-            }
-            var back = 0
-            while back < maxScrollSteps, let next = advance(up: true, from: current) {
-                current = next
-                back += 1
+                if positions() == before { break }
             }
         }
         DebugLog.write("thread: scrolled \(upSteps) steps up and \(downSteps) down (\(wheelMoves) smooth, \(jumpMoves) jumps); "
