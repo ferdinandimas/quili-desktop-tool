@@ -22,6 +22,8 @@ All notable changes to Quili. Versions follow the `VERSION` file; the newest cha
   small orange **!** appears on the Quili button, and its tooltip reads "This text looks like it contains a secret".
   The check runs on your computer and nothing is sent. Turn it off with **Privacy & apps → Warn me when my text
   contains a secret**. macOS and Windows.
+
+  ![The orange ! on the Quili button and its tooltip](docs/images/secret-warning.png)
 - **Reply-aware writing (opt-in).** With **Privacy & apps → Use the messages above as context in Slack** on, Paraphrase
   and Translate to English in Slack read the last messages of the conversation and send them with your text, so the
   rewrite fits what is being discussed. Secrets in those messages are redacted like your own text, nothing is stored
