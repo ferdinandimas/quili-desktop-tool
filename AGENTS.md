@@ -89,6 +89,8 @@ Keep this list current. Anything not listed here is expected to match.
 
 **Every medium-sized or larger change is committed as soon as it is done**, so the history shows what changed and when. That is the same bar as the changelog (a feature, a visible behaviour change, a notable bug fix, a larger refactor); typo fixes and tiny tweaks can wait and ride along with the next commit.
 
+- **Always commit through `tools/commit.sh "<message>"`, never a bare `git commit`.** Each argument is one paragraph of the message (the first is the subject), so `tools/commit.sh "Add the tone bar" "Why or details" "<trailer lines>"`. The script stages everything, makes sure the repo-local author is the personal identity (`ferdinandimas`, see below) and commits; it refuses an empty message and an empty commit, and it never pushes.
+- This repository only ever uses the personal GitHub identity (`Ferdinand Dimas <ferdinandimas@gmail.com>`, remote `git@github-personal:ferdinandimas/...`), never the work account or email; the global git config is the work one, so the script enforces the local one.
 - Commit locally only. **Never push** unless asked: a push is a separate request.
 - One commit per change, with the code, its docs (`CHANGELOG.md`, `README.md`, this file) and any screenshots together, so the commit tells the whole story. Don't mix unrelated work in one commit.
 - Write the message for a reader of the history: a short imperative subject saying what the change does, then a few lines on the why or the notable details. Say in it when a platform could not be compiled.
