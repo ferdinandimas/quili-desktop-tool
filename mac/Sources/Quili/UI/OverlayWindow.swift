@@ -7,13 +7,15 @@ private final class OverlayPanel: NSPanel {
 }
 
 /// Draws the collapsed round button, and — as `expansion` goes 0 → 1 — a white pill growing to its left
-/// with the action buttons (Translate to English, Paraphrase).
+/// with the action buttons (Settings, Tone, Translate to English, Paraphrase).
 private final class OverlayView: NSView {
     static let actionWidth: CGFloat = 36
     var onAction: ((TextAction) -> Void)?
     var onHover: ((Bool) -> Void)?
     var onCancel: (() -> Void)?
     var onSettings: (() -> Void)?
+    /// The pointer moved onto (true) or off (false) the Tone button.
+    var onToneHover: ((Bool) -> Void)?
     /// Dragging: called once when a drag starts, then with each movement in screen points (Cocoa coordinates).
     var onDragStart: (() -> Void)?
     var onDrag: ((CGFloat, CGFloat) -> Void)?
@@ -40,8 +42,15 @@ private final class OverlayView: NSView {
     }
 
     // Hover / press feedback so the buttons read as clickable.
-    private enum Region: CaseIterable { case settings, translate, paraphrase, circle }
-    private var hovered: Region? { didSet { if hovered != oldValue { startHoverAnimation(); updateCursor() } } }
+    private enum Region: CaseIterable { case settings, tone, translate, paraphrase, circle }
+    private var hovered: Region? {
+        didSet {
+            guard hovered != oldValue else { return }
+            startHoverAnimation()
+            updateCursor()
+            if (hovered == .tone) != (oldValue == .tone) { onToneHover?(hovered == .tone) }
+        }
+    }
     private var pressed: Region? { didSet { if pressed != oldValue { startHoverAnimation() } } }
     private var hoverAmount: [Region: CGFloat] = [:]   // 0…1, eased toward the target each frame
     private var pressAmount: [Region: CGFloat] = [:]
@@ -106,7 +115,8 @@ private final class OverlayView: NSView {
         guard expansion > 0.5 else { return nil }
         if point.x >= paraphraseMinX { return .paraphrase }
         if point.x >= paraphraseMinX - Self.actionWidth { return .translate }
-        if point.x >= paraphraseMinX - 2 * Self.actionWidth { return .settings }
+        if point.x >= paraphraseMinX - 2 * Self.actionWidth { return .tone }
+        if point.x >= paraphraseMinX - 3 * Self.actionWidth { return .settings }
         return nil
     }
 
@@ -218,9 +228,10 @@ private final class OverlayView: NSView {
             // Actions are anchored to the round button, so they slide out with the pill. Each is 36×26, centred.
             let paraphrase = NSRect(x: paraphraseMinX, y: 1, width: Self.actionWidth, height: h - 2)
             let translate = paraphrase.offsetBy(dx: -Self.actionWidth, dy: 0)
-            let settings = translate.offsetBy(dx: -Self.actionWidth, dy: 0)
+            let tone = translate.offsetBy(dx: -Self.actionWidth, dy: 0)
+            let settings = tone.offsetBy(dx: -Self.actionWidth, dy: 0)
 
-            for (region, rect) in [(Region.paraphrase, paraphrase), (Region.translate, translate), (Region.settings, settings)] {
+            for (region, rect) in [(Region.paraphrase, paraphrase), (Region.translate, translate), (Region.tone, tone), (Region.settings, settings)] {
                 drawScaled(region, around: NSPoint(x: rect.midX, y: rect.midY)) {
                     // A soft green highlight fades in behind the hovered action; same corners as the pill:
                     // square on the side docked to the field, soft on the other.
@@ -236,6 +247,7 @@ private final class OverlayView: NSView {
                     switch region {
                     case .paraphrase: glyph(Glyph.sparkle, 18)
                     case .settings: glyph(Glyph.gear, 17)
+                    case .tone: glyph(Glyph.tune, 17)
                     default:
                         let label = NSAttributedString(string: "EN", attributes: [
                             .font: NSFont.boldSystemFont(ofSize: 12), .foregroundColor: color,
@@ -325,6 +337,7 @@ extension OverlayView: NSViewToolTipOwner {
         if busy { return hovered == .circle ? "Cancel" : "" }
         switch region(at: point) {
         case .settings: return "Settings"
+        case .tone: return "Tone"
         case .translate: return "Translate to English"
         case .paraphrase: return "Paraphrase"
         default: return "Text Tool"
@@ -334,7 +347,7 @@ extension OverlayView: NSViewToolTipOwner {
 
 @MainActor
 final class OverlayWindow {
-    private static let size: CGFloat = 28, expandedWidth: CGFloat = 138, margin: CGFloat = 6, wideFieldFactor: CGFloat = 10, dockOffset: CGFloat = 6, edgeSearch = 14
+    private static let size: CGFloat = 28, expandedWidth: CGFloat = 174, margin: CGFloat = 6, wideFieldFactor: CGFloat = 10, dockOffset: CGFloat = 6, edgeSearch = 14
     // Time-based easing (not a fixed step per tick) so the pill glides at the display's frame rate.
     private static let expandDuration: TimeInterval = 0.23, collapseDuration: TimeInterval = 0.17
 
@@ -365,14 +378,22 @@ final class OverlayWindow {
     var onAction: ((TextAction) -> Void)? { didSet { view.onAction = onAction } }
     var onCancel: (() -> Void)? { didSet { view.onCancel = onCancel } }
     var onSettings: (() -> Void)? { didSet { view.onSettings = onSettings } }
-    /// The pointer entered (true) or left (false) the pill; the tone bar follows it.
-    var onPillHover: ((Bool) -> Void)?
+    /// The pointer entered (true) or left (false) the Tone button; the tone bar follows it.
+    var onToneHover: ((Bool) -> Void)? { didSet { view.onToneHover = onToneHover } }
     private(set) var isBusy = false
+    /// Keeps the pill open while the pointer is on the tone bar (a separate window next to it); it collapses when the
+    /// pointer is off the pill and the bar.
+    var keepExpanded = false { didSet { if keepExpanded != oldValue { startAnimating() } } }
     /// Whether the tone bar goes above the pill: not when the pill is docked below its field, where "above" is the field.
     var chipsPreferAbove: Bool { view.dock != .belowField }
 
     /// The overlay's current frame in Cocoa screen coordinates; the preview bubble anchors to it.
     var frame: NSRect { panel.frame }
+    /// Where the Tone button is (Cocoa screen coordinates): the third cell left of the round button.
+    var toneArea: NSRect {
+        NSRect(x: panel.frame.maxX - Self.size - 3 * OverlayView.actionWidth, y: panel.frame.minY,
+               width: OverlayView.actionWidth, height: panel.frame.height)
+    }
 
     init() {
         let rect = NSRect(x: 0, y: 0, width: Self.size, height: Self.size)
@@ -389,7 +410,6 @@ final class OverlayWindow {
         view.onHover = { [weak self] inside in
             self?.hovered = inside
             self?.startAnimating()
-            self?.onPillHover?(inside)
         }
         // Dragging: docked (design 2) it turns into the floating pill (design 1) as soon as it is picked up.
         view.onDragStart = { [weak self] in
@@ -437,6 +457,7 @@ final class OverlayWindow {
         animTarget = 0
         hovered = false
         expansion = 0
+        keepExpanded = false // after the reset, so it does not start a collapse animation
         view.expansion = 0
         panel.orderOut(nil)
     }
@@ -571,7 +592,7 @@ final class OverlayWindow {
 
     /// Eases the pill toward open (hovered, idle) or closed, starting from where it is now.
     private func startAnimating() {
-        let target: CGFloat = hovered && !isBusy ? 1 : 0
+        let target: CGFloat = (hovered || keepExpanded) && !isBusy ? 1 : 0
         if animation != nil ? target == animTarget : target == expansion { return }
 
         animFrom = expansion

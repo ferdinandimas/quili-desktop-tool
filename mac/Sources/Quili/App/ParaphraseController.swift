@@ -21,7 +21,7 @@ final class ParaphraseController {
     // Tone chips (hover the pill) and Undo / Original (after a replace).
     private let toneBar = ChipBarWindow()
     private let undoBar = ChipBarWindow()
-    private var pillHovered = false, toneBarHovered = false
+    private var toneButtonHovered = false, toneBarHovered = false
     private var toneWanted = false
     private var toneGrace: Task<Void, Never>?
     private static let toneGraceMilliseconds: UInt64 = 250, undoSeconds: UInt64 = 15
@@ -45,8 +45,8 @@ final class ParaphraseController {
             self.request = Task { await self.run(action) }
         }
         overlay.onSettings = { [weak self] in self?.onOpenSettings?() }
-        overlay.onPillHover = { [weak self] inside in
-            self?.pillHovered = inside
+        overlay.onToneHover = { [weak self] inside in
+            self?.toneButtonHovered = inside
             self?.hoverChanged()
         }
         toneBar.onHover = { [weak self] inside in
@@ -59,7 +59,8 @@ final class ParaphraseController {
             DebugLog.write("tone chip clicked: \(tone.id)")
             self.toneWanted = false
             self.updateBars()
-            self.request = Task { await self.run(.paraphrase, style: tone.instruction) }
+            // The tone is added to the saved instruction, not put in its place.
+            self.request = Task { await self.run(.paraphrase, style: tone.applied(to: self.settings.effectiveStyle)) }
         }
         undoBar.onSelect = { [weak self] index in
             guard let self else { return }
@@ -128,7 +129,7 @@ final class ParaphraseController {
         if let target { overlay.show(at: target.frame, sameField: sameField) } else { overlay.hide() }
         if !sameField {
             toneWanted = false
-            pillHovered = false
+            toneButtonHovered = false
             toneBarHovered = false
             // Undo only makes sense in the field that was replaced.
             if let state = undoState, target == nil || !CFEqual(state.element, target!.element) { clearUndo() }
@@ -138,11 +139,11 @@ final class ParaphraseController {
 
     // MARK: Tone chips, undo and compare
 
-    /// The pointer moved over or off the pill or the tone bar: the bar shows at once and hides after a short grace
-    /// period, so crossing the gap between the pill and the bar does not close it.
+    /// The pointer moved over or off the Tone button or the tone bar: the bar shows at once and hides after a short
+    /// grace period, so crossing the gap between the button and the bar does not close it.
     private func hoverChanged() {
         toneGrace?.cancel()
-        if pillHovered || toneBarHovered {
+        if toneButtonHovered || toneBarHovered {
             toneWanted = true
             updateBars()
         } else {
@@ -159,8 +160,9 @@ final class ParaphraseController {
     /// is something to undo.
     private func updateBars() {
         let tone = toneWanted && current != nil && !overlay.isBusy
+        overlay.keepExpanded = tone // the pill stays open while the pointer is on the bar
         if tone {
-            if !toneBar.isShown { toneBar.show(Tone.all.map(\.label), anchor: overlay.frame, preferAbove: overlay.chipsPreferAbove) }
+            if !toneBar.isShown { toneBar.show(Tone.all.map(\.label), anchor: overlay.toneArea, preferAbove: overlay.chipsPreferAbove, centered: true) }
             undoBar.hide()
             return
         }

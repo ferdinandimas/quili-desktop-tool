@@ -18,7 +18,7 @@ namespace Quili.UI
     /// </summary>
     public partial class OverlayWindow : Window
     {
-        const double CollapsedDip = 28, ExpandedDip = 138, MarginDip = 6, PillRadiusDip = 14, ChipRadiusDip = 13, ChipDip = 26,
+        const double CollapsedDip = 28, ExpandedDip = 174, MarginDip = 6, PillRadiusDip = 14, ChipRadiusDip = 13, ChipDip = 26,
                       DockedCornerDip = 5, DockOffsetDip = 6, EdgeSearchDip = 14;   // design 2: outer corner radius, and drop to reach the field border
         const int WideFieldFactor = 10;   // field width, in button widths, from which the floating design is used
         // Time-based easing (not a fixed step per tick) so the pill glides at the display's frame rate.
@@ -31,6 +31,7 @@ namespace Quili.UI
         int _x, _y, _size;
         double _expansion;      // 0 = collapsed, 1 = fully expanded
         bool _hovered;
+        bool _keepExpanded;
         /// <summary>Screen rectangle (pixels) the overlay occupies; empty while hidden. The preview bubble anchors to it.</summary>
         public System.Drawing.Rectangle Area => OverlayArea;
         System.Drawing.Rectangle OverlayArea;   // where the overlay window currently is (empty until first shown)
@@ -58,8 +59,37 @@ namespace Quili.UI
         public event Action<TextAction>? ActionRequested;
         public event Action? CancelRequested;
         public event Action? SettingsRequested;
-        /// <summary>The pointer entered (true) or left (false) the pill; the tone chip bar follows it.</summary>
-        public event Action<bool>? PillHoverChanged;
+        /// <summary>The pointer entered (true) or left (false) the Tone button; the tone chip bar follows it.</summary>
+        public event Action<bool>? ToneHoverChanged;
+
+        /// <summary>Keeps the pill open while the pointer is on the tone bar (a separate window next to it); it collapses when the pointer is off the pill and the bar.</summary>
+        public bool KeepExpanded
+        {
+            get => _keepExpanded;
+            set
+            {
+                if (_keepExpanded == value) return;
+                _keepExpanded = value;
+                Retarget();
+            }
+        }
+        bool _toneHover;
+
+        /// <summary>
+        /// Screen rectangle (pixels) of the Tone button, in the same coordinates as <see cref="Area"/>; empty while hidden.
+        /// It is the second action cell from the left: the cells (36 dip each) sit left of the 28 dip round button, in the
+        /// order Settings, Tone, EN, Paraphrase.
+        /// </summary>
+        public System.Drawing.Rectangle ToneArea
+        {
+            get
+            {
+                if (OverlayArea.IsEmpty) return System.Drawing.Rectangle.Empty;
+                double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
+                int cell = (int)Math.Round(36 * scale), round = (int)Math.Round(CollapsedDip * scale);
+                return new System.Drawing.Rectangle(OverlayArea.Right - round - 3 * cell, OverlayArea.Y, cell, OverlayArea.Height);
+            }
+        }
         /// <summary>Whether a bar next to the pill goes above it: always, except when the pill is docked below the field.</summary>
         public bool ChipsPreferAbove => !_dockedBelow;
         public bool IsBusy { get; private set; }
@@ -73,6 +103,7 @@ namespace Quili.UI
 
             // Hover / press feedback so the buttons read as clickable.
             MakeInteractive(ParaphraseAction, tint: true, hoverScale: 1.1);
+            MakeInteractive(ToneAction, tint: true, hoverScale: 1.1);
             MakeInteractive(TranslateAction, tint: true, hoverScale: 1.1);
             MakeInteractive(SettingsAction, tint: true, hoverScale: 1.1);
             MakeInteractive(Chip, tint: false, hoverScale: 1.08, noZoom: () => _docked);
@@ -146,6 +177,7 @@ namespace Quili.UI
         public void SetBusy(bool busy)
         {
             IsBusy = busy;
+            if (busy) SetToneHover(false); // the pill collapses while busy
             Robot.Visibility = busy ? Visibility.Collapsed : Visibility.Visible;
             Spin.BeginAnimation(RotateTransform.AngleProperty, busy
                 ? new DoubleAnimation(0, 360, TimeSpan.FromSeconds(0.9)) { RepeatBehavior = RepeatBehavior.Forever }
@@ -250,6 +282,7 @@ namespace Quili.UI
             Chip.Margin = _docked ? new Thickness(1, 1, 1, 0) : new Thickness(1);
             // The hover highlight behind each action follows the same corner setting as the button and pill.
             ParaphraseAction.CornerRadius = button;
+            ToneAction.CornerRadius = button;
             TranslateAction.CornerRadius = button;
             SettingsAction.CornerRadius = button;
         }
@@ -337,6 +370,8 @@ namespace Quili.UI
             _userMoved = false; // focus lost: the next field starts from its default placement
             OverlayArea = System.Drawing.Rectangle.Empty;
             _hovered = false;
+            _keepExpanded = false;
+            SetToneHover(false);
             _expansion = 0;
             _target = 0;
             Hide();
@@ -351,6 +386,7 @@ namespace Quili.UI
             double actions = Math.Clamp((_expansion - 0.3) / 0.7, 0, 1);
             Pill.Opacity = _expansion;
             ParaphraseAction.Opacity = actions;
+            ToneAction.Opacity = actions;
             TranslateAction.Opacity = actions;
             SettingsAction.Opacity = actions;
         }
@@ -358,7 +394,7 @@ namespace Quili.UI
         /// <summary>Eases the pill toward open (hovered, idle) or closed, starting from where it is now.</summary>
         void Retarget()
         {
-            double target = _hovered && !IsBusy ? 1 : 0;
+            double target = (_hovered || _keepExpanded) && !IsBusy ? 1 : 0;
             if (_animating ? target == _target : target == _expansion) return;
 
             _from = _expansion;
@@ -444,14 +480,24 @@ namespace Quili.UI
         {
             _hovered = true;
             Retarget();
-            PillHoverChanged?.Invoke(true);
         }
 
         void Root_MouseLeave(object sender, MouseEventArgs e)
         {
             _hovered = false;
             Retarget();
-            PillHoverChanged?.Invoke(false);
+            SetToneHover(false);
+        }
+
+        void Tone_MouseEnter(object sender, MouseEventArgs e) { if (!IsBusy) SetToneHover(true); }
+
+        void Tone_MouseLeave(object sender, MouseEventArgs e) => SetToneHover(false);
+
+        void SetToneHover(bool hover)
+        {
+            if (_toneHover == hover) return;
+            _toneHover = hover;
+            ToneHoverChanged?.Invoke(hover);
         }
 
         // Only the action buttons start work: the sparkle paraphrases, EN translates to English. The green button

@@ -30,6 +30,19 @@ private final class BubbleView: NSView {
     private var closeRect: NSRect { NSRect(x: bounds.maxX - 8 - Self.closeSize, y: 8, width: Self.closeSize, height: Self.closeSize) }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    // A closable bubble takes clicks, so it claims the regular arrow like the overlay does (see OverlayView).
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .mouseMoved, .cursorUpdate, .activeAlways, .inVisibleRect],
+                                       owner: self, userInfo: nil))
+    }
+    override func resetCursorRects() { if closable { addCursorRect(bounds, cursor: .arrow) } }
+    override func cursorUpdate(with event: NSEvent) { if closable { NSCursor.arrow.set() } }
+    override func mouseEntered(with event: NSEvent) { if closable { NSCursor.arrow.set() } }
+    override func mouseMoved(with event: NSEvent) { if closable { NSCursor.arrow.set() } }
+
     override func mouseDown(with event: NSEvent) {
         if closable, closeRect.insetBy(dx: -5, dy: -5).contains(convert(event.locationInWindow, from: nil)) { onClose?() }
     }

@@ -37,7 +37,7 @@ namespace Quili
         static readonly TimeSpan ToneHideDelay = TimeSpan.FromMilliseconds(250), UndoLifetime = TimeSpan.FromSeconds(15);
         readonly ChipBarWindow _toneBar = new(), _undoBar = new();
         readonly DispatcherTimer _toneHideTimer, _undoTimer;
-        bool _pillHover, _toneBarHover;
+        bool _toneHover, _toneBarHover;
         UndoState? _undo;
         bool _showingOriginal, _undoing; // the bubble shows the original text / an undo is being applied
 
@@ -50,16 +50,17 @@ namespace Quili
             _toneHideTimer.Tick += (_, _) =>
             {
                 _toneHideTimer.Stop();
-                if (!_pillHover && !_toneBarHover) HideToneBar();
+                if (!_toneHover && !_toneBarHover) HideToneBar();
             };
             _undoTimer = new DispatcherTimer { Interval = UndoLifetime };
             _undoTimer.Tick += (_, _) => ClearUndo();
-            _overlay.PillHoverChanged += hover => { _pillHover = hover; OnToneHover(); };
+            _overlay.ToneHoverChanged += hover => { _toneHover = hover; OnToneHover(); };
             _toneBar.HoverChanged += hover => { _toneBarHover = hover; OnToneHover(); };
             _toneBar.ChipClicked += index =>
             {
                 HideToneBar();
-                if (index >= 0 && index < Tone.Presets.Count) _ = RunAsync(TextAction.Paraphrase, Tone.Presets[index].Instruction);
+                // The tone is added to the saved instruction, not put in its place.
+                if (index >= 0 && index < Tone.Presets.Count) _ = RunAsync(TextAction.Paraphrase, Tone.Presets[index].AppliedTo(_settings.EffectiveStyle));
             };
             _undoBar.ChipClicked += index => { if (index == 0) _ = UndoAsync(); else ToggleOriginal(); };
             _tracker.AppAllowed = names => AppFilter.Allows(names, _settings.AppFilterMode, _settings.AppFilterList);
@@ -151,13 +152,14 @@ namespace Quili
         /// <summary>The pointer moved onto or off the pill or the tone bar.</summary>
         void OnToneHover()
         {
-            if (_pillHover || _toneBarHover)
+            if (_toneHover || _toneBarHover)
             {
                 _toneHideTimer.Stop();
-                if (!_toneBar.IsShown && _current != null && !_overlay.IsBusy && !_overlay.Area.IsEmpty)
+                if (!_toneBar.IsShown && _current != null && !_overlay.IsBusy && !_overlay.ToneArea.IsEmpty)
                 {
                     HideUndoBar(); // same spot: the tone chips take over until they hide again
-                    _toneBar.Show(Tone.Labels, _overlay.Area, _overlay.ChipsPreferAbove);
+                    _toneBar.Show(Tone.Labels, _overlay.ToneArea, _overlay.ChipsPreferAbove, centered: true);
+                    _overlay.KeepExpanded = true; // the pill stays open while the pointer is on the bar
                 }
             }
             else if (_toneBar.IsShown)
@@ -170,9 +172,10 @@ namespace Quili
         void HideToneBar()
         {
             _toneHideTimer.Stop();
-            _pillHover = _toneBarHover = false;
+            _toneHover = _toneBarHover = false;
             bool wasShown = _toneBar.IsShown;
             _toneBar.HideBar();
+            _overlay.KeepExpanded = false;
             if (wasShown && _undo != null) ShowUndoBar();
         }
 

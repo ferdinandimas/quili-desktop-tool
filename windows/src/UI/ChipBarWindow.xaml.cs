@@ -76,10 +76,11 @@ namespace Quili.UI
         }
 
         /// <summary>
-        /// Shows <paramref name="chips"/> right-aligned above <paramref name="anchor"/> (screen pixels), or below it when
-        /// <paramref name="preferAbove"/> is false or there is no room; kept inside the screen's work area.
+        /// Shows <paramref name="chips"/> right-aligned (or, with <paramref name="centered"/>, centred horizontally) above
+        /// <paramref name="anchor"/> (screen pixels), or below it when <paramref name="preferAbove"/> is false or there is
+        /// no room; kept inside the screen's work area.
         /// </summary>
-        public void Show(IReadOnlyList<string> chips, System.Drawing.Rectangle anchor, bool preferAbove)
+        public void Show(IReadOnlyList<string> chips, System.Drawing.Rectangle anchor, bool preferAbove, bool centered = false)
         {
             if (anchor.IsEmpty || chips.Count == 0) return;
             var key = string.Join("\u001f", chips);
@@ -93,7 +94,8 @@ namespace Quili.UI
             int gap = (int)Math.Round(GapDip * scale);
 
             var area = System.Windows.Forms.Screen.FromRectangle(anchor).WorkingArea;
-            int x = Math.Max(area.Left, Math.Min(anchor.Right - w, area.Right - w));
+            int wanted = centered ? anchor.Left + (anchor.Width - w) / 2 : anchor.Right - w;
+            int x = Math.Max(area.Left, Math.Min(wanted, area.Right - w));
             int above = anchor.Top - gap - h, below = anchor.Bottom + gap;
             int y = preferAbove
                 ? (above >= area.Top ? above : Math.Min(below, area.Bottom - h))

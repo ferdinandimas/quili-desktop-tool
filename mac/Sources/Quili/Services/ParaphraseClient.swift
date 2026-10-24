@@ -101,7 +101,7 @@ enum ParaphraseClient {
             let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
             DebugLog.write("\(action) response: HTTP \(status)")
             if (200..<300).contains(status), resp.mimeType == "text/event-stream" {
-                let preview: (@MainActor (String) -> Void)? = onText.map { callback in { partial in callback(shown(partial)) } }
+                let preview: (@MainActor (String) -> Void)? = onText.map { callback in { @MainActor partial in callback(shown(partial)) } }
                 return try finalText(try await readStream(bytes, action: action, onText: preview))
             }
             var data = Data()

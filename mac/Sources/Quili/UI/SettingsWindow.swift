@@ -159,6 +159,84 @@ final class CheckRow: ClickView {
     }
 }
 
+/// The green outline of a Settings-style card, drawn above its content so two such windows side by side stay apart.
+/// It never takes clicks.
+final class CardBorder: NSView {
+    static let width: CGFloat = 2, radius: CGFloat = 26
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func draw(_ dirtyRect: NSRect) {
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: Self.width / 2, dy: Self.width / 2),
+                                xRadius: Self.radius - Self.width / 2, yRadius: Self.radius - Self.width / 2)
+        path.lineWidth = Self.width
+        Brand.green.setStroke()
+        path.stroke()
+    }
+}
+
+/// The row of tone chips under the instruction hint: a click puts that tone's instruction in the box, and the chip whose
+/// instruction is in the box shows as selected.
+final class ToneChips: NSView {
+    private static let font = NSFont.systemFont(ofSize: 12, weight: .medium)
+    static let height: CGFloat = 24, padX: CGFloat = 12, gap: CGFloat = 6
+    var selected: Int? { didSet { if selected != oldValue { needsDisplay = true } } }
+    var onSelect: ((Int) -> Void)?
+    private var hovered: Int? { didSet { if hovered != oldValue { needsDisplay = true } } }
+
+    init() {
+        let width = Tone.all.reduce(CGFloat(0)) { $0 + Self.width(of: $1.label) } + Self.gap * CGFloat(Tone.all.count - 1)
+        super.init(frame: NSRect(x: 0, y: 0, width: width, height: Self.height))
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var isFlipped: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    private static func width(of label: String) -> CGFloat {
+        ceil((label as NSString).size(withAttributes: [.font: font]).width) + padX * 2
+    }
+
+    private func rects() -> [NSRect] {
+        var x: CGFloat = 0
+        return Tone.all.map { tone in
+            let rect = NSRect(x: x, y: 0, width: Self.width(of: tone.label), height: Self.height)
+            x = rect.maxX + Self.gap
+            return rect
+        }
+    }
+
+    private func index(at point: NSPoint) -> Int? { rects().firstIndex { $0.contains(point) } }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+                                       owner: self, userInfo: nil))
+    }
+    override func mouseMoved(with event: NSEvent) { hovered = index(at: convert(event.locationInWindow, from: nil)) }
+    override func mouseExited(with event: NSEvent) { hovered = nil }
+    override func mouseDown(with event: NSEvent) {
+        if let i = index(at: convert(event.locationInWindow, from: nil)) { onSelect?(i) }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        for (i, rect) in rects().enumerated() {
+            let isSelected = selected == i, isHovered = hovered == i
+            let shape = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: rect.height / 2, yRadius: rect.height / 2)
+            (isSelected || isHovered ? Brand.greenTint : NSColor.white).setFill()
+            shape.fill()
+            shape.lineWidth = 1
+            (isSelected ? Brand.green : Brand.line).setStroke()
+            shape.stroke()
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: Self.font, .foregroundColor: isSelected || isHovered ? Brand.greenInk : Brand.ink,
+            ]
+            let label = Tone.all[i].label as NSString
+            let size = label.size(withAttributes: attributes)
+            label.draw(at: NSPoint(x: rect.minX + Self.padX, y: rect.midY - size.height / 2), withAttributes: attributes)
+        }
+    }
+}
+
 /// The repository hyperlink.
 final class LinkView: ClickView {
     private let text: NSAttributedString
@@ -224,6 +302,7 @@ final class SettingsWindow: NSObject, NSTextViewDelegate {
     private let keyPlain = NSTextField()
     private let eye = IconButton(path: Glyph.eyeOff, side: 32, glyph: 19, color: Brand.hex(0x55625B))
     private let styleView = NSTextView()
+    private let toneChips = ToneChips()
     private let startup = CheckRow(title: "Start at login")
     private let mock = CheckRow(title: "Mock server (offline)")
     private let logging = CheckRow(title: "Write debug log")
@@ -324,6 +403,13 @@ final class SettingsWindow: NSObject, NSTextViewDelegate {
         [docBadge, docTitle, hint].forEach(content.addSubview)
         y = max(y + 34, hint.frame.maxY) + 12
 
+        // Tone presets: one click puts a tone's instruction in the box below.
+        let toneLabel = label("Tone", size: 13.5, color: Brand.muted)
+        toneLabel.setFrameOrigin(NSPoint(x: pad + 2, y: y + (ToneChips.height - toneLabel.frame.height) / 2))
+        toneChips.frame.origin = NSPoint(x: toneLabel.frame.maxX + 12, y: y)
+        [toneLabel, toneChips].forEach(content.addSubview)
+        y += ToneChips.height + 10
+
         let styleFrame = frame(x: pad, y: y, width: inner, height: 148)
         let scroll = NSScrollView(frame: NSRect(x: 18, y: 12, width: inner - 18 - 10, height: 124))
         scroll.drawsBackground = false
@@ -421,6 +507,7 @@ final class SettingsWindow: NSObject, NSTextViewDelegate {
         content.layer?.cornerRadius = 26
         content.layer?.masksToBounds = true
         card.addSubview(content)
+        card.addSubview(CardBorder(frame: card.bounds))
         root.addSubview(card)
 
         window = SettingsPanel(contentRect: root.frame, styleMask: [.borderless], backing: .buffered, defer: false)
@@ -442,7 +529,25 @@ final class SettingsWindow: NSObject, NSTextViewDelegate {
         privacyLink.onClick = { [weak self] in self?.privacy.show() }
         for field in [server, keySecure, keyPlain] { field.target = self; field.action = #selector(saveFromReturn) }
         styleView.delegate = self
+        toneChips.onSelect = { [weak self] index in self?.applyTone(Tone.all[index]) }
     }
+
+    /// A tone chip was clicked: its adjustment is added under the instruction in the box (the base instruction stays;
+    /// an empty box starts from the default one). Clicking the selected chip takes the adjustment off again.
+    private func applyTone(_ tone: Tone) {
+        let current = styleView.string
+        var base = Tone.removingAdjustment(from: current).trimmingCharacters(in: .whitespacesAndNewlines)
+        if base.isEmpty { base = Settings.defaultStyle }
+        styleView.string = tone.isApplied(to: current) ? base : tone.applied(to: base)
+        syncToneSelection()
+    }
+
+    private func syncToneSelection() {
+        let current = styleView.string
+        toneChips.selected = Tone.all.firstIndex { $0.isApplied(to: current) }
+    }
+
+    func textDidChange(_ notification: Notification) { syncToneSelection() }
 
     func show() {
         server.stringValue = settings.serverUrl
@@ -451,6 +556,7 @@ final class SettingsWindow: NSObject, NSTextViewDelegate {
         keyPlain.stringValue = key
         setKeyRevealed(false)
         styleView.string = settings.style
+        syncToneSelection()
         startup.checked = settings.runAtStartup
         mock.checked = settings.mockMode
         logging.checked = settings.loggingEnabled

@@ -146,6 +146,7 @@ final class PrivacyWindow: NSObject {
         content.layer?.cornerRadius = 26
         content.layer?.masksToBounds = true
         card.addSubview(content)
+        card.addSubview(CardBorder(frame: card.bounds))
         root.addSubview(card)
 
         window = SettingsPanel(contentRect: root.frame, styleMask: [.borderless], backing: .buffered, defer: false)

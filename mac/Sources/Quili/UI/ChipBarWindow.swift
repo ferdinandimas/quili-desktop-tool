@@ -41,16 +41,27 @@ private final class ChipBarView: NSView {
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+        addTrackingArea(NSTrackingArea(rect: bounds,
+                                       options: [.mouseEnteredAndExited, .mouseMoved, .cursorUpdate, .activeAlways, .inVisibleRect],
                                        owner: self, userInfo: nil))
     }
-    override func mouseEntered(with event: NSEvent) { onHover?(true) }
+
+    /// Always the regular arrow, claimed on every pointer event: the panel never becomes key and the app is usually
+    /// inactive, so the app underneath would otherwise keep its own cursor (the text I-beam) over the bar.
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .arrow) }
+    override func cursorUpdate(with event: NSEvent) { NSCursor.arrow.set() }
+
+    override func mouseEntered(with event: NSEvent) {
+        NSCursor.arrow.set()
+        onHover?(true)
+    }
     override func mouseExited(with event: NSEvent) {
         hovered = nil
         needsDisplay = true
         onHover?(false)
     }
     override func mouseMoved(with event: NSEvent) {
+        NSCursor.arrow.set()
         let now = index(at: convert(event.locationInWindow, from: nil))
         if now != hovered {
             hovered = now
@@ -110,12 +121,12 @@ final class ChipBarWindow {
     }
 
     /// Shows `chips` above `anchor` (Cocoa screen coordinates, usually the overlay's frame), right-aligned with it,
-    /// or below it when `preferAbove` is false or there is no room.
-    func show(_ chips: [String], anchor: NSRect, preferAbove: Bool) {
+    /// or below it when `preferAbove` is false or there is no room. `centered` centres it on `anchor` instead.
+    func show(_ chips: [String], anchor: NSRect, preferAbove: Bool, centered: Bool = false) {
         view.chips = chips
         let size = ChipBarView.size(for: chips)
         let visible = (NSScreen.screens.first { $0.frame.intersects(anchor) } ?? NSScreen.main)?.visibleFrame ?? .zero
-        var x = anchor.maxX - size.width
+        var x = centered ? anchor.midX - size.width / 2 : anchor.maxX - size.width
         var y = preferAbove ? anchor.maxY + Self.gap : anchor.minY - Self.gap - size.height
         if y + size.height > visible.maxY { y = anchor.minY - Self.gap - size.height }
         if y < visible.minY { y = anchor.maxY + Self.gap }

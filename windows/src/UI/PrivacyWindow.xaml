@@ -179,7 +179,7 @@
     </Window.Resources>
 
     <!-- The card; the margin leaves room for its soft shadow inside the transparent window -->
-    <Border Margin="30" CornerRadius="26" Background="White">
+    <Border Margin="30" CornerRadius="26" Background="White" BorderBrush="{StaticResource Green}" BorderThickness="2">
         <Border.Effect>
             <DropShadowEffect Color="#1B7F3A" Opacity="0.20" BlurRadius="32" ShadowDepth="8" Direction="270" />
         </Border.Effect>
@@ -190,7 +190,7 @@
             </Grid.RowDefinitions>
 
             <!-- Header -->
-            <Border Grid.Row="0" CornerRadius="26,26,0,0" Padding="28,20,18,20" MouseLeftButtonDown="Header_MouseLeftButtonDown">
+            <Border Grid.Row="0" CornerRadius="24,24,0,0" Padding="28,20,18,20" MouseLeftButtonDown="Header_MouseLeftButtonDown">
                 <Border.Background>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                         <GradientStop Color="#E7F5EC" Offset="0" />

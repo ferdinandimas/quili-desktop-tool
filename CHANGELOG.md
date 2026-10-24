@@ -15,9 +15,15 @@ All notable changes to Quili. Versions follow the `VERSION` file; the newest cha
   | ![The button covers the text next to the caret](docs/images/caret-button-before.png) | ![The button sits to the right of the caret](docs/images/caret-button-after.png) |
 
 ### Added
-- **Tone chips in the pill.** Hover the green button and a small bar offers **Formal**, **Casual**, **Shorter** and
-  **Fix grammar**. One click paraphrases the text with that tone instead of the instruction saved in Settings.
-  macOS and Windows.
+- **Tone button in the pill.** The pill has a new **Tone** button, right of the Settings gear. Hover it and a small
+  bar offers **Formal**, **Casual**, **Shorter** and **Fix grammar**; one click paraphrases the text with your
+  **Paraphrase instruction** plus a one-line tone adjustment, so the base instruction still applies and only the
+  tone changes. The same four tones are in Settings, above the instruction box: click one to add its adjustment
+  under your instruction (click it again to take it off; Save keeps it). The tone bar
+  and the closable bubbles show the normal pointer on macOS. macOS and Windows.
+
+  ![The Tone button in the pill, with its bar of tones](docs/images/tone-button.png)
+
 - **Undo and compare.** After Quili replaces text, an **Undo** / **Original** bar shows for 15 seconds. **Undo**
   puts the text back as it was (only the part Quili replaced, when you had selected a piece of text). **Original**
   shows the text from before in a bubble you can close, so you can compare it with the result. If Quili cannot undo
@@ -31,6 +37,8 @@ All notable changes to Quili. Versions follow the `VERSION` file; the newest cha
   is never silently lost. Email addresses can be hidden too with **Also redact email addresses**. Applies to
   paraphrase, translate and summarize. The server prompts were updated to keep the placeholders intact. macOS and
   Windows.
+
+  ![The Privacy & apps window](docs/images/privacy-and-apps.png)
 - **Summarize a Slack thread.** A ✦ button appears beside Slack's own "Summarize thread" button; Quili reads the
   open thread through the accessibility API (no Slack API or token), scrolls through a long thread to read all of
   it, and shows a short briefing: the key discussion, the outcome classified into decisions, action items, open
@@ -42,6 +50,8 @@ All notable changes to Quili. Versions follow the `VERSION` file; the newest cha
 - Build guide for both platforms and `build.sh` usage in the README.
 
 ### Changed
+- The Settings and Privacy & apps windows have a green outline, so they are easy to tell apart when both are open.
+  macOS and Windows.
 - Paraphrase and translate keep the original line breaks and blank lines, and the whitespace around the text,
   so the structure of a message survives being replaced (server side).
 - Server-side guards: the text sent to paraphrase, translate and summarize is treated strictly as data and can
