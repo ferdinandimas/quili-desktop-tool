@@ -37,12 +37,16 @@ jobs:
         shell: bash
         run: ./build.sh windows nolaunch
       - name: Build installer (Inno Setup)
-        shell: bash
+        # PowerShell, not bash: Git Bash rewrites an argument like /DAppVersion=... into a path. The newest Inno Setup is
+        # installed or upgraded first because the script uses ArchitecturesInstallIn64BitMode=x64compatible (Inno Setup 6.3+).
+        shell: pwsh
         run: |
-          version="$(tr -d '[:space:]' < VERSION)"
-          iscc="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
-          if [ ! -f "$iscc" ]; then choco install innosetup -y --no-progress; fi
-          "$iscc" "/DAppVersion=${version}" windows/installer.iss
+          $version = (Get-Content VERSION -Raw).Trim()
+          choco upgrade innosetup -y --no-progress
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
+          & $iscc "/DAppVersion=$version" windows\installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
       - name: Collect artifacts
         shell: bash
         run: |
