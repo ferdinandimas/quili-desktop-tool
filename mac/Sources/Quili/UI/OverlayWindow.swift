@@ -23,7 +23,7 @@ private final class OverlayView: NSView {
     /// Dragging: called once when a drag starts, then with each movement in screen points (Cocoa coordinates).
     var onDragStart: (() -> Void)?
     var onDrag: ((CGFloat, CGFloat) -> Void)?
-    /// The focused field holds a secret: a small orange ! sits on the round button.
+    /// The focused field holds a secret (the orange ! itself is drawn by `WarningBadgeWindow`, outside this view).
     var warning = false { didSet { if warning != oldValue { needsDisplay = true } } }
     /// The button likely to be wanted next for the field's text: a small badge on the round button while the pill is
     /// closed, a soft green cell behind the button while it is open.
@@ -298,7 +298,6 @@ private final class OverlayView: NSView {
         drawScaled(.circle, around: NSPoint(x: circle.midX, y: circle.midY)) { drawCircleButton(circle) }
         if !busy {
             drawSuggestionBadge(alpha: 1 - expansion)
-            if warning { drawWarningBadge() }
         }
     }
 
@@ -324,20 +323,6 @@ private final class OverlayView: NSView {
             Glyph.fill(Glyph.notes, in: NSRect(x: tag.midX - 4.5, y: tag.midY - 4.5, width: 9, height: 9),
                        color: ink.withAlphaComponent(alpha), viewBox: 24)
         }
-    }
-
-    /// An orange ! in a white ring at the round button's top-right: the field holds a secret.
-    private func drawWarningBadge() {
-        let badge = NSRect(x: bounds.width - 14, y: bounds.height - 14, width: 14, height: 14)
-        NSColor.white.setFill()
-        NSBezierPath(ovalIn: badge).fill()
-        Brand.hex(0xF5A524).setFill()
-        NSBezierPath(ovalIn: badge.insetBy(dx: 1.5, dy: 1.5)).fill()
-        let mark = NSAttributedString(string: "!", attributes: [
-            .font: NSFont.boldSystemFont(ofSize: 10), .foregroundColor: NSColor.white,
-        ])
-        let size = mark.size()
-        mark.draw(at: NSPoint(x: badge.midX - size.width / 2, y: badge.midY - size.height / 2))
     }
 
     private func drawCircleButton(_ circle: NSRect) {
@@ -407,14 +392,63 @@ private final class OverlayView: NSView {
     }
 }
 
+/// An orange ! in a white ring, half on and half off the round button's top-right edge. The overlay window is only as big
+/// as the pill, so the half that sticks out needs a window of its own, which `OverlayWindow` keeps in place.
+@MainActor
+private final class WarningBadgeWindow {
+    static let side: CGFloat = 14
+    private let panel: OverlayPanel
+
+    init() {
+        let rect = NSRect(x: 0, y: 0, width: Self.side, height: Self.side)
+        panel = OverlayPanel(contentRect: rect, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel.contentView = BadgeView(frame: rect)
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = false
+        panel.ignoresMouseEvents = true // the round button underneath keeps every click, hover and tooltip
+        panel.level = .statusBar
+        panel.hidesOnDeactivate = false
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+    }
+
+    /// Centred on the round button's edge at 45° (up and to the right); `pill` is the overlay's frame.
+    func place(near pill: NSRect) {
+        let radius = (OverlayWindow.buttonSide - 2) / 2 // the green button is the pill's height minus 1 point each side
+        let offset = radius * CGFloat(2).squareRoot() / 2
+        let centre = NSPoint(x: pill.maxX - OverlayWindow.buttonSide / 2 + offset, y: pill.midY + offset)
+        panel.setFrameOrigin(NSPoint(x: (centre.x - Self.side / 2).rounded(), y: (centre.y - Self.side / 2).rounded()))
+    }
+
+    func show() { panel.orderFrontRegardless() }
+    func hide() { panel.orderOut(nil) }
+
+    private final class BadgeView: NSView {
+        override func draw(_ dirtyRect: NSRect) {
+            NSColor.white.setFill()
+            NSBezierPath(ovalIn: bounds).fill()
+            Brand.hex(0xF5A524).setFill()
+            NSBezierPath(ovalIn: bounds.insetBy(dx: 1.5, dy: 1.5)).fill()
+            let mark = NSAttributedString(string: "!", attributes: [
+                .font: NSFont.boldSystemFont(ofSize: 10), .foregroundColor: NSColor.white,
+            ])
+            let size = mark.size()
+            mark.draw(at: NSPoint(x: bounds.midX - size.width / 2, y: bounds.midY - size.height / 2))
+        }
+    }
+}
+
 @MainActor
 final class OverlayWindow {
-    private static let size: CGFloat = 28, expandedWidth: CGFloat = 210, margin: CGFloat = 6, wideFieldFactor: CGFloat = 10, dockOffset: CGFloat = 6, edgeSearch = 14
+    fileprivate static let buttonSide: CGFloat = 28
+    private static let size: CGFloat = buttonSide, expandedWidth: CGFloat = 210, margin: CGFloat = 6, wideFieldFactor: CGFloat = 10, dockOffset: CGFloat = 6, edgeSearch = 14
     // Time-based easing (not a fixed step per tick) so the pill glides at the display's frame rate.
     private static let expandDuration: TimeInterval = 0.23, collapseDuration: TimeInterval = 0.17
 
     private let panel: OverlayPanel
     private let view: OverlayView
+    private let warningBadge = WarningBadgeWindow()
+    private var warning = false
     private var animation: Timer?
     private var animFrom: CGFloat = 0, animTarget: CGFloat = 0
     private var animStart = Date(), animDuration: TimeInterval = 0.2
@@ -468,7 +502,18 @@ final class OverlayWindow {
     var chipsPreferAbove: Bool { view.dock != .belowField }
 
     /// Whether the focused field holds a secret (the orange ! on the round button).
-    func setWarning(_ on: Bool) { view.warning = on }
+    func setWarning(_ on: Bool) {
+        warning = on
+        view.warning = on
+        syncWarningBadge()
+    }
+
+    /// The ! follows the pill and is shown only while the pill is, with a warning and not busy.
+    private func syncWarningBadge() {
+        guard warning, !isBusy, panel.isVisible else { warningBadge.hide(); return }
+        warningBadge.place(near: panel.frame)
+        warningBadge.show()
+    }
     /// The button to highlight as the likely next step.
     func setSuggestion(_ value: ActionSuggestion) { view.suggestion = value }
 
@@ -514,6 +559,7 @@ final class OverlayWindow {
     func setBusy(_ busy: Bool) {
         isBusy = busy
         view.busy = busy
+        syncWarningBadge()
         startAnimating() // collapse while busy, re-expand if still hovered afterwards
     }
 
@@ -552,6 +598,7 @@ final class OverlayWindow {
         keepExpanded = false // after the reset, so it does not start a collapse animation
         view.expansion = 0
         panel.orderOut(nil)
+        warningBadge.hide()
     }
 
     /// Places the button at the right edge of `axFrame` (global coordinates, top-left origin): floating inside wide fields,
@@ -609,6 +656,7 @@ final class OverlayWindow {
         applyLayout()
         updateOverlayArea()
         panel.orderFrontRegardless()
+        syncWarningBadge()
         DebugLog.write("overlay placed at \(Int(x)),\(Int(y)) size \(Int(s)) design=\(dock == .floating ? 1 : 2)")
     }
 
@@ -680,6 +728,7 @@ final class OverlayWindow {
         view.expansion = expansion
         panel.setFrame(NSRect(x: (anchor.x - (width - s)).rounded(), y: anchor.y.rounded(), width: width, height: s),
                        display: true)
+        if warning, !isBusy, panel.isVisible { warningBadge.place(near: panel.frame) }
     }
 
     /// Eases the pill toward open (hovered, idle) or closed, starting from where it is now.

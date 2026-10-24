@@ -119,13 +119,5 @@
             </Grid>
         </Border>
 
-        <!-- Secret warning at the round button's top-right: an orange disc with a white ring and a white "!". -->
-        <Grid x:Name="WarningBadge" Visibility="Collapsed" IsHitTestVisible="False" HorizontalAlignment="Right" VerticalAlignment="Top"
-              Width="14" Height="14">
-            <Ellipse Fill="White" />
-            <Ellipse Fill="#F5A524" Margin="1.5" />
-            <TextBlock Text="!" FontSize="10" FontWeight="Bold" Foreground="White" Margin="0,-1,0,0"
-                       HorizontalAlignment="Center" VerticalAlignment="Center" />
-        </Grid>
     </Grid>
 </Window>

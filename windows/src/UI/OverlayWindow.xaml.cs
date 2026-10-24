@@ -114,6 +114,7 @@ namespace Quili.UI
             MakeInteractive(SettingsAction, tint: true, hoverScale: 1.1);
             MakeInteractive(Chip, tint: false, hoverScale: 1.08, noZoom: () => _docked);
 
+            _badge = new WarningBadgeWindow();
             Chip.Background = _chipBrush;
             Chip.MouseEnter += (_, _) => UpdateCancelHover();
             Chip.MouseLeave += (_, _) => { _cancelReady = true; UpdateCancelHover(); };
@@ -123,6 +124,7 @@ namespace Quili.UI
         // whether it holds a secret (an orange ! on the round button).
         ActionSuggestion _suggestion;
         bool _warning;
+        WarningBadgeWindow? _badge;
         readonly Action _refreshSummarize, _refreshTranslate;
         const string WarningTip = "This text looks like it contains a secret";
 
@@ -153,7 +155,17 @@ namespace Quili.UI
         void UpdateBadges()
         {
             SuggestionBadge.Visibility = !IsBusy && _suggestion != ActionSuggestion.None ? Visibility.Visible : Visibility.Collapsed;
-            WarningBadge.Visibility = !IsBusy && _warning ? Visibility.Visible : Visibility.Collapsed;
+            SyncWarningBadge();
+        }
+
+        /// <summary>The orange ! lives in a window of its own (half of it is outside this one); shown only while the overlay is, idle and with a warning.</summary>
+        void SyncWarningBadge()
+        {
+            if (_badge == null) return;
+            if (_warning && !IsBusy && IsVisible)
+                _badge.PlaceNear(_x, _y, _size, VisualTreeHelper.GetDpi(this).DpiScaleX);
+            else
+                _badge.Conceal();
         }
 
         static readonly Color ChipGreen = Color.FromRgb(0x3D, 0xBE, 0x4A);
@@ -343,6 +355,7 @@ namespace Quili.UI
             Native.SetWindowPos(_hwnd, Native.HWND_TOPMOST, _x - (expandedPx - _size), _y, expandedPx, _size,
                 Native.SWP_NOACTIVATE | Native.SWP_SHOWWINDOW);
             OverlayArea = new System.Drawing.Rectangle(_x - (expandedPx - _size), _y, expandedPx, _size);
+            SyncWarningBadge();
         }
 
         // ---- Stepping aside for the caret ----
@@ -424,6 +437,7 @@ namespace Quili.UI
             _expansion = 0;
             _target = 0;
             Hide();
+            SyncWarningBadge();
         }
 
         void ApplyLayout()
