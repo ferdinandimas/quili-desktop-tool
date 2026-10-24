@@ -22,6 +22,8 @@ All notable changes to Quili. Versions follow the `VERSION` file; the newest cha
   AI is done, the bubble shows the result with the words that changed highlighted in soft blue, with **Apply** and
   **Discard** buttons; the text is replaced only when you press Apply (× also discards). If the field changed while
   you were reviewing, nothing is replaced. Undo works as before after Apply. macOS and Windows.
+
+  ![The review bubble with changed words highlighted, and Discard and Apply buttons](docs/images/review-before-apply.png)
 - **Recent rewrites.** Hover the ✦ button and click **History** to open a window with your last 10 paraphrases,
   translations and summaries (when, which app, the original and the result), each with **Copy result** and **Copy
   original**. It is stored only on your computer; **Settings → Privacy & apps → Keep my last 10 rewrites** turns it
