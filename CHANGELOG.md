@@ -31,6 +31,8 @@ All notable changes to Quili. Versions follow the `VERSION` file; the newest cha
   appears on the Quili button and **Translate to English** is highlighted when the pill is open; for a long text
   (800 characters or more) it is **Summarize** instead. The tooltip adds "(suggested)". Worked out on your computer
   from the text alone. macOS and Windows.
+
+  ![The pill open with Translate to English highlighted and its "(suggested)" tooltip](docs/images/suggested-next-action.png)
 - **Check setup and Check for updates.** Two new items in the menu-bar (macOS) / tray (Windows) menu. **Check setup…**
   tests the settings, the server and the API key (and, on macOS, the Accessibility permission) and shows a ✓ or ✗ for
   each. **Check for updates…** asks GitHub for the latest release and offers to open it. Quili also checks once a day
