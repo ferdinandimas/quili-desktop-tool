@@ -21,6 +21,8 @@ enum ThreadReader {
     static let maxChars = 38_000
     private static let maxNodes = 25_000, maxDepth = 60, timeLimit: TimeInterval = 6
     private static let minLines = 3
+    /// The conversation around the message box must hold at least this many lines to count as context.
+    private static let contextMinLines = 8
     /// Around Slack's own button the header (title, channel name) holds a few lines too, so ask for more.
     private static let buttonRegionLines = 6
     /// Scrolling the pane to read all of a long thread: how far each step goes (of the pane's height), the most steps in
@@ -100,6 +102,30 @@ enum ThreadReader {
         }
         if dropped > 0 { DebugLog.write("thread: dropped the oldest \(dropped) messages to fit \(maxChars) chars") }
         return ThreadText(text: messages[dropped...].joined(separator: "\n\n"), truncated: dropped > 0)
+    }
+
+    /// The few messages just above the message box `input`, as context for a rewrite of what is being typed: the region
+    /// around the box that holds at least `contextMinLines` lines of text, read as it is on screen (no scrolling),
+    /// grouped into `{{ }}` messages like a thread summary, keeping the last `maxMessages` and at most `maxChars`
+    /// characters (oldest dropped first). Nil when no such region is found.
+    static func readContext(pid: pid_t, input: AXUIElement, maxMessages: Int = 6,
+                            maxChars: Int = 3000) -> (text: String, count: Int)? {
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        guard let window = focusedWindow(app),
+              let region = regionAround(input, skipping: input, window: window, minLines: contextMinLines) else {
+            DebugLog.write("context: no conversation found around the message box")
+            return nil
+        }
+        var messages = Array(ThreadFormat.messages(from: cleaned(region.lines)).suffix(maxMessages))
+        var total = messages.reduce(0) { $0 + $1.count + 2 }
+        while total > maxChars, messages.count > 1 {
+            total -= messages[0].count + 2
+            messages.removeFirst()
+        }
+        guard !messages.isEmpty else { return nil }
+        DebugLog.write("context: \(messages.count) message(s), \(total) chars")
+        return (messages.joined(separator: "\n\n"), messages.count)
     }
 
     /// An editable text field: where the user types a message, never part of the conversation.

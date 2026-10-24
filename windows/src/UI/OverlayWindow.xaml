@@ -104,5 +104,28 @@
                     </Canvas>
                 </Grid>
             </Border>
+
+        <!-- Suggestion tag at the round button's top-left, while the pill is closed: "EN" (translate) or the notes glyph (summarize). -->
+        <Border x:Name="SuggestionBadge" Visibility="Collapsed" IsHitTestVisible="False" HorizontalAlignment="Right" VerticalAlignment="Top"
+                Width="16" Height="12" Margin="0,0,12,0" CornerRadius="6" Background="#E4F4E9" BorderBrush="#3DBE4A" BorderThickness="1">
+            <Grid>
+                <TextBlock x:Name="SuggestionEn" Text="EN" FontSize="8" FontWeight="Bold" Foreground="#1B7F3A"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <Viewbox x:Name="SuggestionNotes" Width="9" Height="9" Visibility="Collapsed">
+                    <Canvas Width="24" Height="24">
+                        <Path Fill="#1B7F3A" Data="M3,18h12v-2H3V18z M3,6v2h18V6H3z M3,13h18v-2H3V13z" />
+                    </Canvas>
+                </Viewbox>
+            </Grid>
+        </Border>
+
+        <!-- Secret warning at the round button's top-right: an orange disc with a white ring and a white "!". -->
+        <Grid x:Name="WarningBadge" Visibility="Collapsed" IsHitTestVisible="False" HorizontalAlignment="Right" VerticalAlignment="Top"
+              Width="14" Height="14">
+            <Ellipse Fill="White" />
+            <Ellipse Fill="#F5A524" Margin="1.5" />
+            <TextBlock Text="!" FontSize="10" FontWeight="Bold" Foreground="White" Margin="0,-1,0,0"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Grid>
     </Grid>
 </Window>

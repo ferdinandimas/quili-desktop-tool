@@ -90,6 +90,31 @@ final class Settings: @unchecked Sendable {
         set { defaults.set(newValue, forKey: "redactEmails") }
     }
 
+    /// Show a small ! on the Quili button when the focused field contains a secret; on by default. The check runs locally.
+    var warnSecrets: Bool {
+        get { defaults.object(forKey: "warnSecrets") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "warnSecrets") }
+    }
+
+    /// Send the last messages of the Slack conversation along with the text of a paraphrase or translation, so the
+    /// rewrite fits the conversation; off by default.
+    var useContext: Bool {
+        get { defaults.bool(forKey: "useContext") }
+        set { defaults.set(newValue, forKey: "useContext") }
+    }
+
+    /// Look for a new Quili release once a day (on by default).
+    var autoUpdateCheck: Bool {
+        get { defaults.object(forKey: "autoUpdateCheck") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "autoUpdateCheck") }
+    }
+
+    /// When the last automatic update check ran (distant past when it never did).
+    var lastUpdateCheck: Date {
+        get { defaults.object(forKey: "lastUpdateCheck") as? Date ?? .distantPast }
+        set { defaults.set(newValue, forKey: "lastUpdateCheck") }
+    }
+
     /// "hide": show the ✦ button everywhere except the listed apps; "only": show it only in the listed apps.
     var appFilterMode: String {
         get { defaults.string(forKey: "appFilterMode") ?? AppFilter.hideMode }

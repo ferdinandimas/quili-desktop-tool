@@ -19,6 +19,7 @@
         <!-- Icons (24x24 glyphs) -->
         <Geometry x:Key="CloseGeometry">M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12z</Geometry>
         <Geometry x:Key="SaveGeometry">M17,3H5C3.89,3,3,3.9,3,5v14c0,1.1,0.89,2,2,2h14c1.1,0,2-0.9,2-2V7L17,3z M12,19c-1.66,0-3-1.34-3-3s1.34-3,3-3s3,1.34,3,3S13.66,19,12,19z M15,9H5V5h10V9z</Geometry>
+        <Geometry x:Key="EyeOffGeometry">M12,7c2.76,0,5,2.24,5,5c0,0.65-0.13,1.26-0.36,1.83l2.92,2.92c1.51-1.26,2.7-2.89,3.43-4.75c-1.73-4.39-6-7.5-11-7.5c-1.4,0-2.74,0.25-3.98,0.7l2.16,2.16C10.74,7.13,11.35,7,12,7z M2,4.27l2.28,2.28l0.46,0.46C3.08,8.3,1.78,10.02,1,12c1.73,4.39,6,7.5,11,7.5c1.55,0,3.03-0.3,4.38-0.84l0.42,0.42L19.73,22L21,20.73L3.27,3L2,4.27z M7.53,9.8l1.55,1.55C9.03,11.56,9,11.78,9,12c0,1.66,1.34,3,3,3c0.22,0,0.44-0.03,0.65-0.08l1.55,1.55c-0.67,0.33-1.41,0.53-2.2,0.53c-2.76,0-5-2.24-5-5C7,11.21,7.2,10.47,7.53,9.8z M11.84,9.02l3.15,3.15l0.02-0.16c0-1.66-1.34-3-3-3L11.84,9.02z</Geometry>
         <Geometry x:Key="CheckGeometry">M9,16.17L4.83,12l-1.42,1.41L9,19L21,7l-1.41-1.41z</Geometry>
         <Geometry x:Key="AppsGeometry">M4,8h4V4H4V8z M10,20h4v-4h-4V20z M4,20h4v-4H4V20z M4,14h4v-4H4V14z M10,14h4v-4h-4V14z M16,4v4h4V4H16z M10,8h4V4h-4V8z M16,14h4v-4h-4V14z M16,20h4v-4h-4V20z</Geometry>
 
@@ -223,27 +224,52 @@
             <!-- Body -->
             <StackPanel Grid.Row="1" Margin="28,24,28,22">
 
-                <CheckBox x:Name="RedactBox" Content="Redact secrets before sending" Style="{StaticResource GreenCheck}" Margin="2,0,0,0" />
+                <!-- Before sending -->
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="34" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource IconBadge}"><Path Style="{StaticResource BadgeGlyph}" Data="{StaticResource EyeOffGeometry}" /></Border>
+                    <TextBlock Grid.Column="2" Text="Before sending" Style="{StaticResource SectionTitle}" />
+                </Grid>
+
+                <CheckBox x:Name="RedactBox" Content="Redact secrets before sending" Style="{StaticResource GreenCheck}" Margin="2,14,0,0" />
                 <TextBlock Foreground="{StaticResource Muted}" TextWrapping="Wrap" FontSize="13.5" Margin="42,4,0,0"
                            Text="Keys, tokens and passwords are swapped for placeholders before the text leaves your computer, and put back in the answer." />
 
                 <CheckBox x:Name="EmailBox" Content="Also redact email addresses" Style="{StaticResource GreenCheck}" Margin="2,16,0,0" />
 
-                <CheckBox x:Name="HistoryBox" Content="Keep my last 10 rewrites on this computer" Style="{StaticResource GreenCheck}" Margin="2,16,0,0" />
+                <CheckBox x:Name="WarnBox" Content="Warn me when my text contains a secret" Style="{StaticResource GreenCheck}" Margin="2,16,0,0" />
+                <TextBlock Foreground="{StaticResource Muted}" TextWrapping="Wrap" FontSize="13.5" Margin="42,4,0,0"
+                           Text="A small ! shows on the Quili button. The check runs on this computer; nothing is sent." />
+
+                <CheckBox x:Name="ContextBox" Content="Use the messages above as context in Slack" Style="{StaticResource GreenCheck}" Margin="2,16,0,0" />
+                <TextBlock Foreground="{StaticResource Muted}" TextWrapping="Wrap" FontSize="13.5" Margin="42,4,0,0"
+                           Text="Quili reads the last messages of the Slack conversation and sends them with your text, so the rewrite fits the conversation. Off by default. Only in Slack." />
+
+                <!-- On this computer -->
+                <Grid Margin="0,26,0,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="34" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource IconBadge}"><Path Style="{StaticResource BadgeGlyph}" Data="{StaticResource SaveGeometry}" /></Border>
+                    <TextBlock Grid.Column="2" Text="On this computer" Style="{StaticResource SectionTitle}" />
+                </Grid>
+
+                <CheckBox x:Name="HistoryBox" Content="Keep my last 10 rewrites on this computer" Style="{StaticResource GreenCheck}" Margin="2,14,0,0" />
                 <TextBlock Foreground="{StaticResource Muted}" TextWrapping="Wrap" FontSize="13.5" Margin="42,4,0,0"
                            Text="Saved only on this computer. Turning this off and saving also clears the list." />
 
-                <CheckBox x:Name="OnlyBox" Content="Only show Quili in the apps listed below" Style="{StaticResource GreenCheck}" Margin="2,16,0,0" />
+                <CheckBox x:Name="UpdateBox" Content="Check for updates once a day" Style="{StaticResource GreenCheck}" Margin="2,16,0,0" />
+                <TextBlock Foreground="{StaticResource Muted}" TextWrapping="Wrap" FontSize="13.5" Margin="42,4,0,0"
+                           Text="Asks GitHub for the latest release. Nothing else is sent." />
 
+                <!-- Apps -->
                 <Grid Margin="0,26,0,0">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="34" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                    <Border Style="{StaticResource IconBadge}" VerticalAlignment="Top"><Path Style="{StaticResource BadgeGlyph}" Data="{StaticResource AppsGeometry}" /></Border>
-                    <StackPanel Grid.Column="2">
-                        <TextBlock Text="Apps" Style="{StaticResource SectionTitle}" Margin="0,3,0,0" />
-                        <TextBlock Foreground="{StaticResource Muted}" TextWrapping="Wrap" FontSize="13.5" Margin="0,4,0,0"
-                                   Text="One per line, using the process name (for example: slack, chrome, notepad). Quili's ✦ button is hidden in these apps — or shown only in them when the box above is ticked. The Summarize button for Slack threads is not affected." />
-                    </StackPanel>
+                    <Border Style="{StaticResource IconBadge}"><Path Style="{StaticResource BadgeGlyph}" Data="{StaticResource AppsGeometry}" /></Border>
+                    <TextBlock Grid.Column="2" Text="Apps" Style="{StaticResource SectionTitle}" />
                 </Grid>
+
+                <CheckBox x:Name="OnlyBox" Content="Only show Quili in the apps listed below" Style="{StaticResource GreenCheck}" Margin="2,14,0,0" />
+                <TextBlock Foreground="{StaticResource Muted}" TextWrapping="Wrap" FontSize="13.5" Margin="0,4,0,0"
+                           Text="One per line, using the process name (for example: slack, chrome, notepad). Quili's ✦ button is hidden in these apps — or shown only in them when the box above is ticked. The Summarize button for Slack threads is not affected." />
                 <Border Style="{StaticResource FieldFrame}" CornerRadius="22" Padding="18,12,10,12" Margin="0,12,0,0">
                     <TextBox x:Name="AppsBox" Style="{StaticResource BareBox}" Height="110" TextWrapping="Wrap" AcceptsReturn="True"
                              VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" />

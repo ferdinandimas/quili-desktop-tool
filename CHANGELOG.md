@@ -18,6 +18,24 @@ All notable changes to Quili. Versions follow the `VERSION` file; the newest cha
   | ![The button covers the text next to the caret](docs/images/caret-button-before.png) | ![The button sits to the right of the caret](docs/images/caret-button-after.png) |
 
 ### Added
+- **Warning before you send a secret.** When the text in the field you are in contains a key, token or password, a
+  small orange **!** appears on the Quili button, and its tooltip reads "This text looks like it contains a secret".
+  The check runs on your computer and nothing is sent. Turn it off with **Privacy & apps → Warn me when my text
+  contains a secret**. macOS and Windows.
+- **Reply-aware writing (opt-in).** With **Privacy & apps → Use the messages above as context in Slack** on, Paraphrase
+  and Translate to English in Slack read the last messages of the conversation and send them with your text, so the
+  rewrite fits what is being discussed. Secrets in those messages are redacted like your own text, nothing is stored
+  in History, and the review bubble says "Used 6 messages from Slack as context". Off by default; only in Slack.
+  macOS and Windows.
+- **The likely next button is highlighted.** If the text in the field does not look like English, a small **EN** tag
+  appears on the Quili button and **Translate to English** is highlighted when the pill is open; for a long text
+  (800 characters or more) it is **Summarize** instead. The tooltip adds "(suggested)". Worked out on your computer
+  from the text alone. macOS and Windows.
+- **Check setup and Check for updates.** Two new items in the menu-bar (macOS) / tray (Windows) menu. **Check setup…**
+  tests the settings, the server and the API key (and, on macOS, the Accessibility permission) and shows a ✓ or ✗ for
+  each. **Check for updates…** asks GitHub for the latest release and offers to open it. Quili also checks once a day
+  at startup and only speaks up when there is a newer version; **Privacy & apps → Check for updates once a day** turns
+  that off. macOS and Windows.
 - **Review before replace.** Paraphrase and Translate to English no longer overwrite your text on their own. When the
   AI is done, the bubble shows the result with the words that changed highlighted in soft blue, with **Apply** and
   **Discard** buttons; the text is replaced only when you press Apply (× also discards). If the field changed while
@@ -28,6 +46,8 @@ All notable changes to Quili. Versions follow the `VERSION` file; the newest cha
   translations and summaries (when, which app, the original and the result), each with **Copy result** and **Copy
   original**. It is stored only on your computer; **Settings → Privacy & apps → Keep my last 10 rewrites** turns it
   off, which also clears it, and the window has a **Clear history** button. macOS and Windows.
+
+  ![The Recent rewrites window](docs/images/recent-rewrites.png)
 - **Summarize selected text.** A new **Summarize** button in the pill, and **Summarize selected text** in the menu-bar
   (macOS) / tray (Windows) menu, summarize whatever you selected in any app, not only Slack threads. The pill button
   uses the selection (or the whole field) of the field you are in; the menu item also works on text you cannot type

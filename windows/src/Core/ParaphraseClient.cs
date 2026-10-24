@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Text;
@@ -39,9 +40,11 @@ namespace Quili.Core
         /// Runs the action on the server. <paramref name="onText"/> (optional) receives the rewritten text so
         /// far while the model is still writing it (each call replaces the previous one); the return value is
         /// the final, authoritative text. The paraphrase instruction is <see cref="Settings.EffectiveStyle"/>.
+        /// <paramref name="context"/> (paraphrase and translate only) is the Slack conversation the text replies to; it is masked
+        /// like the text, with placeholder numbers after the text's own, and its placeholders are never restored or required.
         /// </summary>
         public static async Task<string> RunAsync(string text, Settings settings, TextAction action,
-            CancellationToken ct = default, Action<string>? onText = null)
+            CancellationToken ct = default, Action<string>? onText = null, string? context = null)
         {
             var apiKey = settings.ApiKey;
             // With the mock toggle on, every action is answered by the built-in mock, which needs neither a
@@ -66,16 +69,25 @@ namespace Quili.Core
                 text = masked.Text;
                 if (masked.Values.Count > 0) DebugLog.Write($"redacted {masked.Values.Count} value(s) before sending");
             }
+            string? outgoingContext = context == null ? null : TextHygiene.StripLoneSurrogates(context).Trim();
+            if (!string.IsNullOrEmpty(outgoingContext) && settings.RedactSecrets)
+                outgoingContext = Redactor.Mask(outgoingContext, settings.RedactEmails, (masked?.Values.Count ?? 0) + 1).Text;
             DebugLog.Write($"{action} request: POST {serverUrl}{action.Path()} ({TextHygiene.Describe(text)})");
             // The default encoder escapes every non-ASCII character (\uD83D\uDE00), so emoji cannot be
             // mangled in transit; the body is also sent explicitly as UTF-8.
             // Paraphrase carries the user's instruction; translate always targets English; a summary has no instruction.
-            var body = action switch
+            var fields = new Dictionary<string, object> { ["text"] = text };
+            switch (action)
             {
-                TextAction.TranslateToEnglish => JsonSerializer.Serialize(new { text, target_language = "English", stream = true }),
-                TextAction.SummarizeThread or TextAction.SummarizeText => JsonSerializer.Serialize(new { text, stream = true }),
-                _ => JsonSerializer.Serialize(new { text, style = TextHygiene.StripLoneSurrogates(settings.EffectiveStyle), stream = true }),
-            };
+                case TextAction.TranslateToEnglish: fields["target_language"] = "English"; break;
+                case TextAction.SummarizeThread or TextAction.SummarizeText: break;
+                default: fields["style"] = TextHygiene.StripLoneSurrogates(settings.EffectiveStyle); break;
+            }
+            // The conversation a reply belongs to goes along only with a paraphrase or a translation, and only when there is one.
+            if (!string.IsNullOrEmpty(outgoingContext) && (action is TextAction.Paraphrase or TextAction.TranslateToEnglish))
+                fields["context"] = outgoingContext;
+            fields["stream"] = true;
+            var body = JsonSerializer.Serialize(fields);
 
             HttpRequestMessage NewRequest()
             {

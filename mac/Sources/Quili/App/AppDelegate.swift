@@ -30,6 +30,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.start()
 
         if settings.apiKey.isEmpty || settings.serverUrl.isEmpty { settingsWindow.show() }
+
+        Task { await Checkups.checkInBackground(settings: settings) }
     }
 
     // MARK: - Menus
@@ -50,6 +52,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
         let pause = menu.addItem(withTitle: "Pause", action: #selector(togglePause(_:)), keyEquivalent: "")
         pause.target = self
+        menu.addItem(withTitle: "Check setup…", action: #selector(checkSetup), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Check for updates…", action: #selector(checkForUpdates), keyEquivalent: "").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
@@ -71,6 +75,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openSettings() { settingsWindow.show() }
+
+    @objc private func checkSetup() { Task { await Checkups.checkSetup(settings: settings) } }
+
+    @objc private func checkForUpdates() { Task { await Checkups.checkForUpdates() } }
 
     @objc private func summarizeSelection() { controller.summarizeSelectedText() }
 

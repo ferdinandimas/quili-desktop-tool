@@ -28,10 +28,14 @@ namespace Quili
                 catch (Exception ex) { DebugLog.Write($"mock server failed to start: {ex.GetType().Name}: {ex.Message}"); }
             }
 
-            _tray = new TrayIcon(ShowSettings, () => _controller!.SummarizeSelection(), paused => _controller!.Paused = paused, Shutdown);
+            _tray = new TrayIcon(ShowSettings, () => _controller!.SummarizeSelection(), paused => _controller!.Paused = paused,
+                async () => await Checkups.CheckSetupAsync(_settings), async () => await Checkups.CheckForUpdatesAsync(), Shutdown);
             _controller = new ParaphraseController(_settings, Dispatcher, _tray.Notify);
             _controller.SettingsRequested += ShowSettings;
             _controller.Start();
+
+            // Quiet daily check, started before the (modal) first-run Settings window so it does not wait for it.
+            _ = Checkups.CheckInBackgroundAsync(_settings, (title, message) => _tray!.Notify(title, message, NoticeLevel.Info));
 
             if (string.IsNullOrEmpty(_settings.ApiKey) || string.IsNullOrEmpty(_settings.ServerUrl)) ShowSettings();
         }

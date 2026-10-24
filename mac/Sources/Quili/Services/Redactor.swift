@@ -28,7 +28,9 @@ enum Redactor {
 
     static func placeholder(_ number: Int) -> String { "QXKEY\(number)QX" }
 
-    static func mask(_ text: String, emails: Bool) -> Masked {
+    /// `startingAt` numbers the placeholders from there instead of 1, so a second text (the conversation context) can
+    /// be masked after the first without reusing its numbers.
+    static func mask(_ text: String, emails: Bool, startingAt first: Int = 1) -> Masked {
         var current = text
         var values: [String] = []
         for rule in rules where emails || !rule.isEmail {
@@ -41,8 +43,8 @@ enum Redactor {
                 let original = source.substring(with: range)
                 if original.contains("QXKEY") { continue } // already a placeholder
                 let number: Int
-                if let known = values.firstIndex(of: original) { number = known + 1 }
-                else { values.append(original); number = values.count }
+                if let known = values.firstIndex(of: original) { number = known + first }
+                else { values.append(original); number = values.count - 1 + first }
                 edits.append((range, number))
             }
             let result = NSMutableString(string: current)

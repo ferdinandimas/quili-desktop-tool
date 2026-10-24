@@ -30,6 +30,8 @@ private final class BubbleView: NSView {
     var actions = false { didSet { needsDisplay = true } }
     var onApply: (() -> Void)?
     var onDiscard: (() -> Void)?
+    /// A muted note at the footer's left (what the review used as context); only drawn with `actions`.
+    var footnote: String? { didSet { needsDisplay = true } }
     private var hoveredButton: Int? { didSet { if hoveredButton != oldValue { needsDisplay = true } } } // 0 Discard, 1 Apply
     static let footerHeight: CGFloat = 40, buttonHeight: CGFloat = 28, minActionsWidth: CGFloat = 210
     static let highlightFill = NSColor(srgbRed: 0xD6 / 255, green: 0xE8 / 255, blue: 0xFF / 255, alpha: 1)
@@ -115,15 +117,23 @@ private final class BubbleView: NSView {
                                options: [.usesLineFragmentOrigin]).height)
     }
 
+    static let footnoteFont = NSFont.systemFont(ofSize: 12)
+    static let footnoteInk = Brand.hex(0x6E7B73)
+
     /// The card size that fits `text`.
     static func size(for text: String, tall: Bool = false, closable: Bool = false, markdown: Bool? = nil,
-                     actions: Bool = false) -> NSSize {
+                     actions: Bool = false, footnote: String? = nil) -> NSSize {
         let drawn = attributed(text, markdown: markdown ?? tall)
         let bounding = drawn.boundingRect(with: NSSize(width: maxTextWidth, height: .greatestFiniteMagnitude),
                                           options: [.usesLineFragmentOrigin])
         let height = min(tall ? tallTextHeight : maxTextHeight, textHeight(drawn, width: ceil(bounding.width)))
         let width = ceil(bounding.width) + padX * 2 + (closable ? closeExtra : 0)
-        return NSSize(width: actions ? max(width, minActionsWidth) : width,
+        var footerWidth = minActionsWidth
+        if actions, let footnote {
+            // The note, a gap, then Discard and Apply (84 + 12 + 72), between the card's side paddings.
+            footerWidth = max(footerWidth, ceil((footnote as NSString).size(withAttributes: [.font: footnoteFont]).width) + 12 + 168 + padX * 2)
+        }
+        return NSSize(width: actions ? max(width, footerWidth) : width,
                       height: height + padY * 2 + (actions ? footerHeight : 0))
     }
 
@@ -175,6 +185,11 @@ private final class BubbleView: NSView {
             let size = label.size()
             label.draw(at: NSPoint(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2))
         }
+        if let footnote {
+            let note = NSAttributedString(string: footnote, attributes: [.font: Self.footnoteFont, .foregroundColor: Self.footnoteInk])
+            let size = note.size()
+            note.draw(at: NSPoint(x: Self.padX, y: applyRect.midY - size.height / 2))
+        }
         pill(discardRect, "Discard", fill: hoveredButton == 0 ? Brand.hex(0xF1F5F2) : .white, border: Brand.line, ink: Brand.ink)
         pill(applyRect, "Apply", fill: hoveredButton == 1 ? Brand.hex(0x1F9E43) : Brand.greenDeep, border: nil, ink: .white)
     }
@@ -213,8 +228,9 @@ final class BubbleWindow {
     /// same as `tall`) turns `**bold**` into bold text.
     /// A review bubble passes `actions: true` and the UTF-16 ranges of the changed words as `highlights`; it takes clicks.
     func show(_ text: String, above anchor: NSRect, tall: Bool = false, closable: Bool = false, markdown: Bool? = nil,
-              highlights: [NSRange] = [], actions: Bool = false) {
+              highlights: [NSRange] = [], actions: Bool = false, footnote: String? = nil) {
         cancelFade()
+        view.footnote = footnote
         view.highlights = highlights
         view.actions = actions
         panel.ignoresMouseEvents = !closable
@@ -222,7 +238,7 @@ final class BubbleWindow {
         view.tall = tall
         view.markdown = markdown ?? tall
         view.text = text
-        let size = BubbleView.size(for: text, tall: tall, closable: closable, markdown: markdown, actions: actions)
+        let size = BubbleView.size(for: text, tall: tall, closable: closable, markdown: markdown, actions: actions, footnote: footnote)
         let visible = (NSScreen.screens.first { $0.frame.intersects(anchor) } ?? NSScreen.main)?.visibleFrame ?? .zero
         var x = anchor.maxX - size.width
         var y = anchor.maxY + Self.gap
@@ -265,6 +281,7 @@ final class BubbleWindow {
         view.closable = false
         view.actions = false
         view.highlights = []
+        view.footnote = nil
         view.text = ""
         panel.orderOut(nil)
     }

@@ -38,6 +38,18 @@ namespace Quili.Core
         /// <summary>Privacy: the last 10 rewrites are kept on this computer (see <see cref="HistoryStore"/>); on by default. Turning it off and saving clears them.</summary>
         public bool KeepHistory { get; set; } = true;
 
+        /// <summary>Privacy: a small orange ! shows on the Quili button while the focused field's text contains a secret (checked on this computer only); on by default.</summary>
+        public bool WarnSecrets { get; set; } = true;
+
+        /// <summary>Privacy: in Slack, Paraphrase and Translate also send the last messages of the conversation as context; off by default.</summary>
+        public bool UseContext { get; set; }
+
+        /// <summary>Look for a newer Quili release once a day (asks GitHub only); on by default.</summary>
+        public bool AutoUpdateCheck { get; set; } = true;
+
+        /// <summary>When the last automatic update check ran (UTC); the minimum value when it never did.</summary>
+        public DateTime LastUpdateCheck { get; set; } = DateTime.MinValue;
+
         /// <summary>"hide" (the default): no button in the apps listed. "only": the button shows only in the listed apps.</summary>
         public string AppFilterMode { get; set; } = AppFilter.HideMode;
 

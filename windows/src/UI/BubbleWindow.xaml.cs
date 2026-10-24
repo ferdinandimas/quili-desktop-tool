@@ -60,6 +60,8 @@ namespace Quili.UI
             CloseButton.Visibility = clickable ? Visibility.Visible : Visibility.Collapsed;
             Scroller.Margin = new Thickness(0, 0, clickable ? CloseExtraDip : 0, 0);
             Footer.Visibility = Visibility.Collapsed; // only a review has the buttons (ShowReview turns them on)
+            Footnote.Visibility = Visibility.Collapsed;
+            Footnote.Text = "";
             Card.MinWidth = 0;
         }
 
@@ -94,14 +96,17 @@ namespace Quili.UI
         /// Shows the finished rewrite for review: a tall, closable, non-markdown bubble in which the parts listed in
         /// <paramref name="changed"/> (offsets into <paramref name="text"/>) have a soft blue highlight, with Discard and
         /// Apply buttons under it. The close button and Discard raise <see cref="CloseRequested"/>, Apply raises
-        /// <see cref="ApplyRequested"/>; the field is not touched by the bubble itself.
+        /// <see cref="ApplyRequested"/>; the field is not touched by the bubble itself. A <paramref name="footnote"/> (what the review
+        /// used as context) is shown in muted text at the footer's left.
         /// </summary>
-        public void ShowReview(string text, IReadOnlyList<(int Start, int Length)> changed, System.Drawing.Rectangle anchor)
+        public void ShowReview(string text, IReadOnlyList<(int Start, int Length)> changed, System.Drawing.Rectangle anchor, string? footnote = null)
         {
             if (anchor.IsEmpty) return;
             CancelFade();
             SetClickable(true);
             Footer.Visibility = Visibility.Visible;
+            Footnote.Text = footnote ?? "";
+            Footnote.Visibility = string.IsNullOrEmpty(footnote) ? Visibility.Collapsed : Visibility.Visible;
             DiscardButton.Background = DiscardBrush;
             ApplyButton.Background = ApplyBrush;
             Card.MinWidth = ReviewMinWidthDip;

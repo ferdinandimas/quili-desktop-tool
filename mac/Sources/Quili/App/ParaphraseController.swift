@@ -7,6 +7,8 @@ final class ParaphraseController {
     private let settings: Settings
     private let tracker = FocusTracker()
     private let caret = CaretTracker()
+    private let secretWatcher = SecretWatcher()
+    private var hints = FieldHints()
     private let overlay = OverlayWindow()
     private let bubble = BubbleWindow()
     private let threadWatcher = ThreadWatcher()
@@ -104,6 +106,10 @@ final class ParaphraseController {
         }
         tracker.onChange = { [weak self] target in self?.targetChanged(target) }
         caret.onChange = { [weak self] box in self?.overlay.avoid(caret: box) }
+        secretWatcher.onChange = { [weak self] hints in
+            self?.hints = hints
+            self?.applyHints()
+        }
         bubble.onApply = { [weak self] in self?.applyPending() }
         bubble.onDiscard = { [weak self] in self?.clearPending(fade: true) }
         bubble.onClose = { [weak self] in
@@ -129,7 +135,15 @@ final class ParaphraseController {
     func start() {
         tracker.start()
         caret.start()
+        secretWatcher.start()
         threadWatcher.start()
+    }
+
+    /// Puts the field's hints on the button: the ! when the text holds a secret (and the warning is on), and the
+    /// suggested next button.
+    private func applyHints() {
+        overlay.setWarning(settings.warnSecrets && hints.secrets > 0)
+        overlay.setSuggestion(hints.suggestion)
     }
 
     var paused: Bool {
@@ -159,6 +173,9 @@ final class ParaphraseController {
         caret.follow(target?.element)
         if let target { overlay.show(at: target.frame, sameField: sameField) } else { overlay.hide() }
         if !sameField {
+            secretWatcher.follow(target?.element)
+            if hints != FieldHints() { hints = FieldHints() }
+            applyHints()
             wantedBar = nil
             toneButtonHovered = false
             toneBarHovered = false
@@ -450,7 +467,15 @@ final class ParaphraseController {
 
             // The text streams into a bubble beside the button while the model writes it; the field itself is
             // only touched once the final text is in and the user has pressed Apply.
-            let result = try await ParaphraseClient.run(field.text, settings: settings, action: action) { [weak self] partial in
+            // With "Use the messages above as context" on, the last messages of the Slack conversation go along.
+            var context: (text: String, count: Int)?
+            if settings.useContext, action == .paraphrase || action == .translateToEnglish,
+               targetApp?.bundleIdentifier == ThreadReader.slackBundleId {
+                let pid = targetApp!.processIdentifier, input = target.element
+                context = await Task.detached { ThreadReader.readContext(pid: pid, input: input) }.value
+                try Task.checkCancellation()
+            }
+            let result = try await ParaphraseClient.run(field.text, settings: settings, action: action, context: context?.text) { [weak self] partial in
                 guard let self, self.previewing else { return }
                 self.bubble.show(partial, above: self.overlay.frame)
             }
@@ -460,7 +485,8 @@ final class ParaphraseController {
             pending = PendingReview(element: target.element, app: targetApp, field: field, result: result, action: action)
             keepBubble = true
             bubble.show(result, above: overlay.frame, tall: true, closable: true, markdown: false,
-                        highlights: TextDiff.changedRanges(original: field.text, result: result), actions: true)
+                        highlights: TextDiff.changedRanges(original: field.text, result: result), actions: true,
+                        footnote: context.map { $0.count == 1 ? "Used 1 message from Slack as context" : "Used \($0.count) messages from Slack as context" })
         } catch is CancellationError {
             DebugLog.write("\(action) cancelled by the user")
         } catch let error as URLError where error.code == .cancelled {

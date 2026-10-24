@@ -6,7 +6,7 @@ using Quili.Platform;
 
 namespace Quili.UI
 {
-    /// <summary>Opened from Settings: what is hidden before text is sent (secrets, emails), and in which apps the button shows.</summary>
+    /// <summary>Opened from Settings: what is hidden or warned about before text is sent, what is kept on this computer, and in which apps the button shows.</summary>
     public partial class PrivacyWindow : Window
     {
         readonly Settings _settings;
@@ -17,7 +17,10 @@ namespace Quili.UI
             _settings = settings;
             RedactBox.IsChecked = settings.RedactSecrets;
             EmailBox.IsChecked = settings.RedactEmails;
+            WarnBox.IsChecked = settings.WarnSecrets;
+            ContextBox.IsChecked = settings.UseContext;
             HistoryBox.IsChecked = settings.KeepHistory;
+            UpdateBox.IsChecked = settings.AutoUpdateCheck;
             OnlyBox.IsChecked = settings.AppFilterMode == AppFilter.OnlyMode;
             AppsBox.Text = settings.AppFilterList;
             ContentRendered += (_, _) => BringToFront();
@@ -44,7 +47,10 @@ namespace Quili.UI
         {
             _settings.RedactSecrets = RedactBox.IsChecked == true;
             _settings.RedactEmails = EmailBox.IsChecked == true;
+            _settings.WarnSecrets = WarnBox.IsChecked == true;
+            _settings.UseContext = ContextBox.IsChecked == true;
             _settings.KeepHistory = HistoryBox.IsChecked == true;
+            _settings.AutoUpdateCheck = UpdateBox.IsChecked == true;
             if (!_settings.KeepHistory) HistoryStore.Clear(); // turning it off also clears what was kept
             _settings.AppFilterMode = OnlyBox.IsChecked == true ? AppFilter.OnlyMode : AppFilter.HideMode;
             _settings.AppFilterList = AppsBox.Text.Trim();

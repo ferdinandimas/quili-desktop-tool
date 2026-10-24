@@ -35,7 +35,7 @@ enum ParaphraseClient {
     /// (each call replaces the previous one); the return value is the final, authoritative text. With "Redact secrets"
     /// on, secrets in `text` are swapped for placeholders before sending and put back into the answer (a summary only
     /// gets a label), so the server never sees them.
-    static func run(_ text: String, settings: Settings, action: TextAction,
+    static func run(_ text: String, settings: Settings, action: TextAction, context: String? = nil,
                     onText: (@MainActor (String) -> Void)? = nil) async throws -> String {
         let apiKey = settings.apiKey
         // With the mock toggle on, every action is answered by the built-in mock, which needs neither a server URL
@@ -62,6 +62,12 @@ enum ParaphraseClient {
                 DebugLog.write("\(action) redacted \(result.values.count) value(s) before sending")
             }
         }
+        // The conversation a reply belongs to (paraphrase and translate only) is masked too, with placeholder numbers
+        // after the text's own; they are never restored or required in the answer.
+        var outgoingContext = context?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let ctx = outgoingContext, !ctx.isEmpty, settings.redactSecrets {
+            outgoingContext = Redactor.mask(ctx, emails: settings.redactEmails, startingAt: (masked?.values.count ?? 0) + 1).text
+        }
         /// Streamed text as shown to the user: originals back in place (a summary: labels).
         func shown(_ partial: String) -> String {
             guard let masked else { return partial }
@@ -85,12 +91,15 @@ enum ParaphraseClient {
         req.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
         req.setValue("text/event-stream, application/json", forHTTPHeaderField: "Accept")
         // Paraphrase carries the user's instruction; translate always targets English; a summary has no instruction.
-        let body: [String: Any]
+        var body: [String: Any]
         switch action {
         case .translateToEnglish: body = ["text": outgoing, "target_language": "English", "stream": true]
         case .summarizeThread, .summarizeText: body = ["text": outgoing, "stream": true]
         case .paraphrase:
             body = ["text": outgoing, "style": settings.effectiveStyle, "stream": true]
+        }
+        if let ctx = outgoingContext, !ctx.isEmpty, action == .paraphrase || action == .translateToEnglish {
+            body["context"] = ctx
         }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 

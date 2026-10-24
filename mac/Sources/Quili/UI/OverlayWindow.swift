@@ -23,6 +23,11 @@ private final class OverlayView: NSView {
     /// Dragging: called once when a drag starts, then with each movement in screen points (Cocoa coordinates).
     var onDragStart: (() -> Void)?
     var onDrag: ((CGFloat, CGFloat) -> Void)?
+    /// The focused field holds a secret: a small orange ! sits on the round button.
+    var warning = false { didSet { if warning != oldValue { needsDisplay = true } } }
+    /// The button likely to be wanted next for the field's text: a small badge on the round button while the pill is
+    /// closed, a soft green cell behind the button while it is open.
+    var suggestion = ActionSuggestion.none { didSet { if suggestion != oldValue { needsDisplay = true } } }
     private var dragLast = NSPoint.zero, dragOrigin = NSPoint.zero
     private var dragging = false
     private static let dragThreshold: CGFloat = 4
@@ -80,10 +85,10 @@ private final class OverlayView: NSView {
         switch region {
         case .settings: return "Settings"
         case .tone: return "Tone"
-        case .summarize: return "Summarize"
-        case .translate: return "Translate to English"
+        case .summarize: return suggestion == .summarize ? "Summarize (suggested)" : "Summarize"
+        case .translate: return suggestion == .translate ? "Translate to English (suggested)" : "Translate to English"
         case .paraphrase: return "Paraphrase"
-        case .circle: return busy ? "Cancel" : "Text Tool"
+        case .circle: return busy ? "Cancel" : warning ? "This text looks like it contains a secret" : "Text Tool"
         }
     }
 
@@ -260,8 +265,10 @@ private final class OverlayView: NSView {
                                       (Region.tone, tone), (Region.settings, settings)] {
                 drawScaled(region, around: NSPoint(x: rect.midX, y: rect.midY)) {
                     // A soft green highlight fades in behind the hovered action; same corners as the pill:
-                    // square on the side docked to the field, soft on the other.
-                    Brand.green.withAlphaComponent(0.18 * (hoverAmount[region] ?? 0) * actionAlpha).setFill()
+                    // square on the side docked to the field, soft on the other. The suggested action keeps one.
+                    let suggested = (region == .translate && suggestion == .translate) || (region == .summarize && suggestion == .summarize)
+                    let highlight = max(hoverAmount[region] ?? 0, suggested ? 1 : 0)
+                    Brand.green.withAlphaComponent(0.18 * highlight * actionAlpha).setFill()
                     let r = dock == .floating ? rect.height / 2 : Self.dockedRadius
                     Self.roundedPath(rect, top: dock == .belowField ? 0 : r, bottom: dock == .aboveField ? 0 : r).fill()
 
@@ -289,6 +296,48 @@ private final class OverlayView: NSView {
         // The green button starts 1 point below the pill's top and is 2 points shorter than the pill.
         let circle = NSRect(x: bounds.width - h, y: 0, width: h, height: h).insetBy(dx: 1, dy: 1)
         drawScaled(.circle, around: NSPoint(x: circle.midX, y: circle.midY)) { drawCircleButton(circle) }
+        if !busy {
+            drawSuggestionBadge(alpha: 1 - expansion)
+            if warning { drawWarningBadge() }
+        }
+    }
+
+    /// "EN" or the notes glyph in a small green tag at the round button's top-left, while the pill is closed.
+    private func drawSuggestionBadge(alpha: CGFloat) {
+        guard suggestion != .none, alpha > 0.01 else { return }
+        let h = bounds.height
+        let tag = NSRect(x: bounds.width - h, y: h - 12, width: 16, height: 12)
+        let ink = Brand.hex(0x1B7F3A)
+        let shape = NSBezierPath(roundedRect: tag.insetBy(dx: 0.5, dy: 0.5), xRadius: 6, yRadius: 6)
+        Brand.hex(0xE4F4E9).withAlphaComponent(alpha).setFill()
+        shape.fill()
+        Brand.green.withAlphaComponent(alpha).setStroke()
+        shape.lineWidth = 1
+        shape.stroke()
+        if suggestion == .translate {
+            let label = NSAttributedString(string: "EN", attributes: [
+                .font: NSFont.boldSystemFont(ofSize: 8), .foregroundColor: ink.withAlphaComponent(alpha),
+            ])
+            let size = label.size()
+            label.draw(at: NSPoint(x: tag.midX - size.width / 2, y: tag.midY - size.height / 2))
+        } else {
+            Glyph.fill(Glyph.notes, in: NSRect(x: tag.midX - 4.5, y: tag.midY - 4.5, width: 9, height: 9),
+                       color: ink.withAlphaComponent(alpha), viewBox: 24)
+        }
+    }
+
+    /// An orange ! in a white ring at the round button's top-right: the field holds a secret.
+    private func drawWarningBadge() {
+        let badge = NSRect(x: bounds.width - 14, y: bounds.height - 14, width: 14, height: 14)
+        NSColor.white.setFill()
+        NSBezierPath(ovalIn: badge).fill()
+        Brand.hex(0xF5A524).setFill()
+        NSBezierPath(ovalIn: badge.insetBy(dx: 1.5, dy: 1.5)).fill()
+        let mark = NSAttributedString(string: "!", attributes: [
+            .font: NSFont.boldSystemFont(ofSize: 10), .foregroundColor: NSColor.white,
+        ])
+        let size = mark.size()
+        mark.draw(at: NSPoint(x: badge.midX - size.width / 2, y: badge.midY - size.height / 2))
     }
 
     private func drawCircleButton(_ circle: NSRect) {
@@ -417,6 +466,11 @@ final class OverlayWindow {
     var keepExpanded = false { didSet { if keepExpanded != oldValue { startAnimating() } } }
     /// Whether the tone bar goes above the pill: not when the pill is docked below its field, where "above" is the field.
     var chipsPreferAbove: Bool { view.dock != .belowField }
+
+    /// Whether the focused field holds a secret (the orange ! on the round button).
+    func setWarning(_ on: Bool) { view.warning = on }
+    /// The button to highlight as the likely next step.
+    func setSuggestion(_ value: ActionSuggestion) { view.suggestion = value }
 
     /// The overlay's current frame in Cocoa screen coordinates; the preview bubble anchors to it.
     var frame: NSRect { panel.frame }

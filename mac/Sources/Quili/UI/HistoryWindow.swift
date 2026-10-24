@@ -61,7 +61,10 @@ private final class HistoryRow: FlippedView {
             field.maximumNumberOfLines = lines
             field.lineBreakMode = .byTruncatingTail
             field.cell?.truncatesLastVisibleLine = true
-            let full = ceil(field.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: width, height: 10_000)).height ?? lineHeight(font))
+            field.preferredMaxLayoutWidth = width
+            // The wrapped height: the cell reports one line for a truncating label, so measure the text itself.
+            let full = ceil((text as NSString).boundingRect(with: NSSize(width: width, height: 10_000),
+                                                             options: [.usesLineFragmentOrigin], attributes: [.font: font]).height)
             field.frame = NSRect(x: 0, y: y, width: width, height: min(full, lineHeight(font) * CGFloat(lines)))
             y = field.frame.maxY + 6
             addSubview(field)

@@ -28,6 +28,8 @@ namespace Quili
         bool _summarizing, _summaryDismissed; // a summary is being made / its close button was clicked meanwhile
         readonly FocusTracker _tracker = new();
         readonly CaretTracker _caret = new();
+        readonly SecretWatcher _secretWatcher;
+        FieldHints _hints; // what the focused field's text holds: secrets and the likely next button
         TextTarget? _current;
         CancellationTokenSource? _cts;
         bool _writing; // once the field is being written, cancelling would leave it half-replaced
@@ -55,6 +57,12 @@ namespace Quili
             _settings = settings;
             _dispatcher = dispatcher;
             _notify = notify;
+            _secretWatcher = new SecretWatcher(dispatcher);
+            _secretWatcher.Changed += hints =>
+            {
+                _hints = hints;
+                ApplyHints();
+            };
             _toneHideTimer = new DispatcherTimer { Interval = ToneHideDelay };
             _toneHideTimer.Tick += (_, _) =>
             {
@@ -117,7 +125,18 @@ namespace Quili
         {
             _tracker.Start();
             _caret.Start();
+            _secretWatcher.Start();
             _threadWatcher.Start();
+        }
+
+        /// <summary>
+        /// Puts the field's hints on the button: the ! when the text holds a secret (and the warning is on), and the suggested
+        /// next button. Called when the hints change and after the target changes.
+        /// </summary>
+        void ApplyHints()
+        {
+            _overlay.SetWarning(_settings.WarnSecrets && _hints.Secrets > 0);
+            _overlay.SetSuggestion(_hints.Suggestion);
         }
 
         public bool Paused
@@ -136,6 +155,7 @@ namespace Quili
             _undoTimer.Stop();
             _tracker.Dispose();
             _caret.Dispose();
+            _secretWatcher.Dispose();
             _threadWatcher.Dispose();
             _history?.Close();
         }
@@ -168,6 +188,13 @@ namespace Quili
             bool sameField = target != null && _current != null && FocusTracker.SameElement(_current.Element, target.Element);
             _current = target;
             _caret.Follow(target?.Element);
+            if (!sameField)
+            {
+                // A new field starts without hints; the watcher fills them in within its first poll.
+                _secretWatcher.Follow(target?.Element);
+                _hints = default;
+                ApplyHints();
+            }
             if (target == null) _overlay.HideOverlay();
             else _overlay.ShowAt(target.Bounds, sameField);
             if (_undo != null) ShowUndoBar(); // follow the pill
@@ -544,19 +571,30 @@ namespace Quili
                     return;
                 }
 
+                // With "Use the messages above as context in Slack" on, the last messages of the conversation go along
+                // (paraphrase and translate only). A failed read just sends the text without them.
+                ContextText? context = null;
+                if (_settings.UseContext && (action is TextAction.Paraphrase or TextAction.TranslateToEnglish) && ThreadReader.IsSlack(targetWindow))
+                {
+                    var input = target.Element;
+                    context = await Task.Run(() => ThreadReader.ReadContext(targetWindow, input));
+                    cts.Token.ThrowIfCancellationRequested();
+                }
+
                 // The text streams into a bubble beside the button while the model writes it; the field itself is
                 // not touched until the user applies the finished result.
                 var result = await ParaphraseClient.RunAsync(field.Text, _settings, action, cts.Token,
                     partial => _dispatcher.BeginInvoke(() =>
                     {
                         if (previewing && !cts.IsCancellationRequested) _bubble.ShowText(partial, _overlay.Area);
-                    }));
+                    }), context?.Text);
                 previewing = false;
                 RecordHistory(HistoryKind(action), app, field.Text, result);
 
                 // Review: the same bubble now shows the result with the changed words highlighted and Discard / Apply.
                 _pending = new PendingReview(target.Element, targetWindow, field, result, action);
-                _bubble.ShowReview(result, TextDiff.ChangedRanges(field.Text, result), _overlay.Area);
+                _bubble.ShowReview(result, TextDiff.ChangedRanges(field.Text, result), _overlay.Area,
+                    footnote: context == null ? null : context.Count == 1 ? "Used 1 message from Slack as context" : $"Used {context.Count} messages from Slack as context");
                 keepBubble = true;
             }
             catch (OperationCanceledException) when (cts.IsCancellationRequested)

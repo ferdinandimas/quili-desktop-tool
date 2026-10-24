@@ -109,14 +109,51 @@ namespace Quili.UI
             // Hover / press feedback so the buttons read as clickable.
             MakeInteractive(ParaphraseAction, tint: true, hoverScale: 1.1);
             MakeInteractive(ToneAction, tint: true, hoverScale: 1.1);
-            MakeInteractive(SummarizeAction, tint: true, hoverScale: 1.1);
-            MakeInteractive(TranslateAction, tint: true, hoverScale: 1.1);
+            _refreshSummarize = MakeInteractive(SummarizeAction, tint: true, hoverScale: 1.1, suggested: () => _suggestion == ActionSuggestion.Summarize);
+            _refreshTranslate = MakeInteractive(TranslateAction, tint: true, hoverScale: 1.1, suggested: () => _suggestion == ActionSuggestion.Translate);
             MakeInteractive(SettingsAction, tint: true, hoverScale: 1.1);
             MakeInteractive(Chip, tint: false, hoverScale: 1.08, noZoom: () => _docked);
 
             Chip.Background = _chipBrush;
             Chip.MouseEnter += (_, _) => UpdateCancelHover();
             Chip.MouseLeave += (_, _) => { _cancelReady = true; UpdateCancelHover(); };
+        }
+
+        // What the field's text suggests (a tag on the round button while the pill is closed, a soft green cell while it is open) and
+        // whether it holds a secret (an orange ! on the round button).
+        ActionSuggestion _suggestion;
+        bool _warning;
+        readonly Action _refreshSummarize, _refreshTranslate;
+        const string WarningTip = "This text looks like it contains a secret";
+
+        /// <summary>The focused field holds a secret: a small orange ! sits on the round button (and its tooltip says so).</summary>
+        public void SetWarning(bool on)
+        {
+            if (_warning == on) return;
+            _warning = on;
+            UpdateBadges();
+            UpdateCancelHover();
+        }
+
+        /// <summary>The button likely to be wanted next for the field's text.</summary>
+        public void SetSuggestion(ActionSuggestion value)
+        {
+            if (_suggestion == value) return;
+            _suggestion = value;
+            TranslateAction.ToolTip = value == ActionSuggestion.Translate ? "Translate to English (suggested)" : "Translate to English";
+            SummarizeAction.ToolTip = value == ActionSuggestion.Summarize ? "Summarize (suggested)" : "Summarize";
+            SuggestionEn.Visibility = value == ActionSuggestion.Translate ? Visibility.Visible : Visibility.Collapsed;
+            SuggestionNotes.Visibility = value == ActionSuggestion.Summarize ? Visibility.Visible : Visibility.Collapsed;
+            _refreshTranslate();
+            _refreshSummarize();
+            UpdateBadges();
+        }
+
+        /// <summary>The badges show only while idle; the suggestion tag also fades out as the pill opens (see <see cref="ApplyLayout"/>).</summary>
+        void UpdateBadges()
+        {
+            SuggestionBadge.Visibility = !IsBusy && _suggestion != ActionSuggestion.None ? Visibility.Visible : Visibility.Collapsed;
+            WarningBadge.Visibility = !IsBusy && _warning ? Visibility.Visible : Visibility.Collapsed;
         }
 
         static readonly Color ChipGreen = Color.FromRgb(0x3D, 0xBE, 0x4A);
@@ -132,7 +169,7 @@ namespace Quili.UI
                 new ColorAnimation(cancel ? ChipRed : ChipGreen, TimeSpan.FromMilliseconds(120)));
             CancelMark.Visibility = cancel ? Visibility.Visible : Visibility.Collapsed;
             Spinner.Visibility = IsBusy && !cancel ? Visibility.Visible : Visibility.Collapsed;
-            Chip.ToolTip = IsBusy ? (cancel ? "Cancel" : null) : "Text Tool";
+            Chip.ToolTip = IsBusy ? (cancel ? "Cancel" : null) : _warning ? WarningTip : "Text Tool";
             // Idle, the green button is only a handle to drag; while busy, hovering it offers Cancel.
             Chip.Cursor = IsBusy ? (cancel ? Cursors.Hand : Cursors.Wait) : Cursors.SizeAll;
         }
@@ -142,9 +179,10 @@ namespace Quili.UI
 
         /// <summary>
         /// Grows the button slightly (and, for the pill actions, fades in a soft green highlight) while the
-        /// mouse is over it, and shrinks it a little while it is pressed. Idle while a request is running.
+        /// mouse is over it, and shrinks it a little while it is pressed. Idle while a request is running. A <paramref name="suggested"/>
+        /// button keeps the soft green highlight while the pointer is away. Returns an action that re-applies the resting highlight.
         /// </summary>
-        void MakeInteractive(Border button, bool tint, double hoverScale, Func<bool>? noZoom = null)
+        Action MakeInteractive(Border button, bool tint, double hoverScale, Func<bool>? noZoom = null, Func<bool>? suggested = null)
         {
             double Hover() => noZoom?.Invoke() == true ? 1 : hoverScale;
             double Press() => noZoom?.Invoke() == true ? 1 : 0.88;
@@ -174,10 +212,12 @@ namespace Quili.UI
                 highlight?.BeginAnimation(SolidColorBrush.ColorProperty,
                     new ColorAnimation(to, TimeSpan.FromMilliseconds(120)));
 
+            Color Rest() => suggested?.Invoke() == true ? TintOn : TintOff;
             button.MouseEnter += (_, _) => { if (!IsBusy) { Scale(Hover(), 130); Tint(TintOn); } };
-            button.MouseLeave += (_, _) => { Scale(1, 130); Tint(TintOff); };
+            button.MouseLeave += (_, _) => { Scale(1, 130); Tint(Rest()); };
             button.MouseLeftButtonDown += (_, _) => { if (!IsBusy) Scale(Press(), 70); };
             button.MouseLeftButtonUp += (_, _) => Scale(button.IsMouseOver && !IsBusy ? Hover() : 1, 110);
+            return () => Tint(button.IsMouseOver && !IsBusy ? TintOn : Rest());
         }
 
         public void SetBusy(bool busy)
@@ -189,6 +229,7 @@ namespace Quili.UI
                 ? new DoubleAnimation(0, 360, TimeSpan.FromSeconds(0.9)) { RepeatBehavior = RepeatBehavior.Forever }
                 : null);
             _cancelReady = !Chip.IsMouseOver;
+            UpdateBadges();
             UpdateCancelHover();
             Retarget(); // collapse while busy, re-expand if still hovered afterwards
         }
@@ -398,6 +439,7 @@ namespace Quili.UI
             SummarizeAction.Opacity = actions;
             TranslateAction.Opacity = actions;
             SettingsAction.Opacity = actions;
+            SuggestionBadge.Opacity = 1 - _expansion;
         }
 
         /// <summary>Eases the pill toward open (hovered, idle) or closed, starting from where it is now.</summary>

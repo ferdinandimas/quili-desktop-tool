@@ -31,8 +31,12 @@ namespace Quili.Core
 
         static readonly Regex PlaceholderPattern = new(@"QXKEY(\d+)QX", RegexOptions.CultureInvariant);
 
-        /// <summary>Replaces every sensitive value in <paramref name="text"/> by a placeholder; <see cref="Masked.Values"/> holds the originals (placeholder n is Values[n - 1]).</summary>
-        public static Masked Mask(string text, bool emails)
+        /// <summary>
+        /// Replaces every sensitive value in <paramref name="text"/> by a placeholder; <see cref="Masked.Values"/> holds the originals
+        /// (placeholder n is Values[n - startAt]). <paramref name="startAt"/> numbers the placeholders from there instead of 1, so a
+        /// second text (the conversation context) can be masked after the first without reusing its numbers.
+        /// </summary>
+        public static Masked Mask(string text, bool emails, int startAt = 1)
         {
             var values = new List<string>();
             var rules = new List<Rule>(SecretRules);
@@ -45,8 +49,8 @@ namespace Quili.Core
                 {
                     var g = matches[i].Groups[rule.Group];
                     if (!g.Success || g.Length == 0 || g.Value.Contains(Marker)) continue;
-                    int number = values.IndexOf(g.Value) + 1;
-                    if (number == 0) { values.Add(g.Value); number = values.Count; }
+                    int number = values.IndexOf(g.Value) + startAt;
+                    if (number == startAt - 1) { values.Add(g.Value); number = values.Count - 1 + startAt; }
                     text = text[..g.Index] + Marker + number + "QX" + text[(g.Index + g.Length)..];
                 }
             }

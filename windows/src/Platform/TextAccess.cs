@@ -90,6 +90,29 @@ namespace Quili.Platform
             return Normalize(now) == Normalize(field.Text);
         }
 
+        /// <summary>
+        /// The first <paramref name="maxChars"/> characters of a field's text for the secret watcher: only UI Automation is used (never the
+        /// clipboard or the keyboard), and null when the field cannot be read. Safe to call off the UI thread.
+        /// </summary>
+        public static string? PeekText(AutomationElement el, int maxChars)
+        {
+            try
+            {
+                if (el.TryGetCurrentPattern(TextPattern.Pattern, out var tp))
+                {
+                    var text = ((TextPattern)tp).DocumentRange.GetText(maxChars);
+                    if (!string.IsNullOrEmpty(text)) return text;
+                }
+                if (el.TryGetCurrentPattern(ValuePattern.Pattern, out var vp))
+                {
+                    var value = ((ValuePattern)vp).Current.Value ?? "";
+                    return value.Length > maxChars ? value[..maxChars] : value;
+                }
+            }
+            catch (Exception) { }
+            return null;
+        }
+
         static (string? Selection, TextPatternRange? SelectionRange, string? Whole, bool SelectionKnown) TryReadUia(AutomationElement el)
         {
             string? selection = null, whole = null;

@@ -29,9 +29,16 @@
                 </Border>
             </Grid>
 
-            <!-- Review footer: 40 dip tall, two 28 dip pill buttons right-aligned with a 12 dip gap. -->
-            <StackPanel x:Name="Footer" Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right"
-                        Height="40" Visibility="Collapsed">
+            <!-- Review footer: 40 dip tall, two 28 dip pill buttons right-aligned with a 12 dip gap, and at its left an optional
+                 muted note (what the review used as context). -->
+            <Grid x:Name="Footer" Grid.Row="1" Height="40" Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="Footnote" Grid.Column="0" Visibility="Collapsed" FontSize="12" Foreground="#6E7B73"
+                           VerticalAlignment="Bottom" Margin="0,0,12,6" HorizontalAlignment="Left" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
                 <Border x:Name="DiscardButton" Height="28" Padding="16,0" VerticalAlignment="Bottom" CornerRadius="14"
                         Background="White" BorderBrush="#D3DAD6" BorderThickness="1.5" Cursor="Hand"
                         MouseEnter="Discard_MouseEnter" MouseLeave="Discard_MouseLeave"
@@ -44,7 +51,8 @@
                         MouseLeftButtonUp="Apply_MouseLeftButtonUp">
                     <TextBlock Text="Apply" FontSize="13" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center" />
                 </Border>
-            </StackPanel>
+                </StackPanel>
+            </Grid>
         </Grid>
     </Border>
 </Window>

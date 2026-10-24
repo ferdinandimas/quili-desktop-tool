@@ -11,6 +11,9 @@ namespace Quili.Platform
     /// <summary>The visible text of the chat thread open in a Slack window. Truncated: older lines were dropped to stay under the server's size cap.</summary>
     public sealed record ThreadText(string Text, bool Truncated);
 
+    /// <summary>The last messages of the conversation around a message box, in the thread format, and how many there are.</summary>
+    public sealed record ContextText(string Text, int Count);
+
     /// <summary>
     /// Reads the thread pane of the Slack desktop app (an Electron app, so its web content is exposed through UI
     /// Automation once an accessibility client is detected). Nothing is written to Slack and no Slack API or token
@@ -30,6 +33,8 @@ namespace Quili.Platform
         public const int MaxChars = 38_000;
 
         const int MaxNodes = 25_000, MaxDepth = 60, MinLines = 3;
+        /// <summary>The conversation around the message box must hold at least this many lines to count as context.</summary>
+        const int ContextMinLines = 8;
         /// <summary>Around Slack's own button the header (title, channel name) holds a few lines too, so ask for more.</summary>
         const int ButtonRegionLines = 6;
         static readonly TimeSpan TimeLimit = TimeSpan.FromSeconds(6);
@@ -235,6 +240,41 @@ namespace Quili.Platform
             catch (Exception ex)
             {
                 DebugLog.Write($"thread: read failed: {ex.GetType().Name}: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// The few messages just above the message box <paramref name="input"/>, as context for a rewrite of what is being typed: the
+        /// region around the box that holds at least <see cref="ContextMinLines"/> lines of text, read as it is on screen (no
+        /// scrolling), grouped into <c>{{ }}</c> messages like a thread summary, keeping the last <paramref name="maxMessages"/> and
+        /// at most <paramref name="maxChars"/> characters (oldest dropped first). Null when no such region is found. Runs off the UI thread.
+        /// </summary>
+        public static ContextText? ReadContext(IntPtr hwnd, AutomationElement input, int maxMessages = 6, int maxChars = 3000)
+        {
+            try
+            {
+                var window = AutomationElement.FromHandle(hwnd);
+                var lines = RegionAround(input, input, window, ContextMinLines, out _);
+                if (lines == null)
+                {
+                    DebugLog.Write("context: no conversation found around the message box");
+                    return null;
+                }
+                var messages = ThreadFormat.Messages(Cleaned(lines)).TakeLast(maxMessages).ToList();
+                int total = messages.Sum(m => m.Length + 2); // plus the blank line between messages
+                while (total > maxChars && messages.Count > 1)
+                {
+                    total -= messages[0].Length + 2;
+                    messages.RemoveAt(0);
+                }
+                if (messages.Count == 0) return null;
+                DebugLog.Write($"context: {messages.Count} message(s), {total} chars");
+                return new ContextText(string.Join("\n\n", messages), messages.Count);
+            }
+            catch (Exception ex)
+            {
+                DebugLog.Write($"context: read failed: {ex.GetType().Name}: {ex.Message}");
                 return null;
             }
         }
