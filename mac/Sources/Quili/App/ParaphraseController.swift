@@ -18,6 +18,26 @@ final class ParaphraseController {
     private var previewing = false // late streamed updates must not re-show the bubble after the request ended
     private var writing = false // once the field is being written, cancelling would leave it half-replaced
 
+    // Tone chips (hover the pill) and Undo / Original (after a replace).
+    private let toneBar = ChipBarWindow()
+    private let undoBar = ChipBarWindow()
+    private var pillHovered = false, toneBarHovered = false
+    private var toneWanted = false
+    private var toneGrace: Task<Void, Never>?
+    private static let toneGraceMilliseconds: UInt64 = 250, undoSeconds: UInt64 = 15
+    private static let undoChips = ["Undo", "Original"]
+
+    /// What the last replace changed, so it can be undone or compared: the field as it was read and what was written.
+    private struct UndoState {
+        let element: AXUIElement
+        let app: NSRunningApplication?
+        let field: FieldText
+        let result: String
+    }
+    private var undoState: UndoState?
+    private var undoExpiry: Task<Void, Never>?
+    private var showingOriginal = false
+
     init(settings: Settings) {
         self.settings = settings
         overlay.onAction = { [weak self] action in
@@ -25,6 +45,29 @@ final class ParaphraseController {
             self.request = Task { await self.run(action) }
         }
         overlay.onSettings = { [weak self] in self?.onOpenSettings?() }
+        overlay.onPillHover = { [weak self] inside in
+            self?.pillHovered = inside
+            self?.hoverChanged()
+        }
+        toneBar.onHover = { [weak self] inside in
+            self?.toneBarHovered = inside
+            self?.hoverChanged()
+        }
+        toneBar.onSelect = { [weak self] index in
+            guard let self, self.request == nil, self.current != nil, !self.overlay.isBusy, Tone.all.indices.contains(index) else { return }
+            let tone = Tone.all[index]
+            DebugLog.write("tone chip clicked: \(tone.id)")
+            self.toneWanted = false
+            self.updateBars()
+            self.request = Task { await self.run(.paraphrase, style: tone.instruction) }
+        }
+        undoBar.onSelect = { [weak self] index in
+            guard let self else { return }
+            if index == 0 { self.undo() } else { self.toggleOriginal() }
+        }
+        tracker.appAllowed = { [settings] names in
+            AppFilter.allows(names, mode: settings.appFilterMode, list: settings.appFilterList)
+        }
         overlay.onCancel = { [weak self] in
             guard let self, !self.writing else { return }
             DebugLog.write("cancel requested; dropping the connection")
@@ -38,6 +81,7 @@ final class ParaphraseController {
             // Clicked before the summary finished: stop the request too, and let the fade finish the job. Streamed
             // updates that are still on their way must not bring the bubble back.
             if self.previewing { self.summaryDismissed = true; self.request?.cancel() }
+            self.showingOriginal = false
             self.bubble.fadeOut()
         }
         threadWatcher.onChange = { [weak self] pane in self?.threadPaneChanged(pane) }
@@ -61,7 +105,7 @@ final class ParaphraseController {
         set {
             tracker.paused = newValue
             threadWatcher.paused = newValue
-            if newValue { overlay.hide(); bubble.hide(); threadButton.hide() }
+            if newValue { overlay.hide(); bubble.hide(); threadButton.hide(); toneWanted = false; clearUndo(); updateBars() }
         }
     }
 
@@ -82,6 +126,129 @@ final class ParaphraseController {
         current = target
         caret.follow(target?.element)
         if let target { overlay.show(at: target.frame, sameField: sameField) } else { overlay.hide() }
+        if !sameField {
+            toneWanted = false
+            pillHovered = false
+            toneBarHovered = false
+            // Undo only makes sense in the field that was replaced.
+            if let state = undoState, target == nil || !CFEqual(state.element, target!.element) { clearUndo() }
+        }
+        updateBars()
+    }
+
+    // MARK: Tone chips, undo and compare
+
+    /// The pointer moved over or off the pill or the tone bar: the bar shows at once and hides after a short grace
+    /// period, so crossing the gap between the pill and the bar does not close it.
+    private func hoverChanged() {
+        toneGrace?.cancel()
+        if pillHovered || toneBarHovered {
+            toneWanted = true
+            updateBars()
+        } else {
+            toneGrace = Task { [weak self] in
+                await Pause.milliseconds(Self.toneGraceMilliseconds)
+                guard let self, !Task.isCancelled else { return }
+                self.toneWanted = false
+                self.updateBars()
+            }
+        }
+    }
+
+    /// Shows the tone bar while it is wanted (and nothing is running), otherwise the Undo / Original bar while there
+    /// is something to undo.
+    private func updateBars() {
+        let tone = toneWanted && current != nil && !overlay.isBusy
+        if tone {
+            if !toneBar.isShown { toneBar.show(Tone.all.map(\.label), anchor: overlay.frame, preferAbove: overlay.chipsPreferAbove) }
+            undoBar.hide()
+            return
+        }
+        toneBar.hide()
+        toneBarHovered = false
+        if undoState != nil, current != nil, !overlay.isBusy {
+            if !undoBar.isShown { undoBar.show(Self.undoChips, anchor: overlay.frame, preferAbove: overlay.chipsPreferAbove) }
+        } else {
+            undoBar.hide()
+        }
+    }
+
+    /// Remembers the replace that just happened for 15 seconds.
+    private func offerUndo(_ state: UndoState) {
+        undoState = state
+        undoExpiry?.cancel()
+        undoExpiry = Task { [weak self] in
+            await Pause.milliseconds(Self.undoSeconds * 1000)
+            guard let self, !Task.isCancelled else { return }
+            self.clearUndo()
+            self.updateBars()
+        }
+    }
+
+    private func clearUndo() {
+        undoExpiry?.cancel()
+        undoExpiry = nil
+        undoState = nil
+        undoBar.hide()
+        if showingOriginal {
+            showingOriginal = false
+            bubble.hide()
+        }
+    }
+
+    /// "Original": shows, or closes, the text as it was before the replace.
+    private func toggleOriginal() {
+        guard let state = undoState else { return }
+        if showingOriginal {
+            showingOriginal = false
+            bubble.fadeOut()
+            return
+        }
+        showingOriginal = true
+        let anchor = undoBar.isShown ? overlay.frame.union(undoBar.frame) : overlay.frame
+        bubble.show(state.field.text, above: anchor, tall: true, closable: true, markdown: false)
+    }
+
+    private func undo() {
+        guard let state = undoState, request == nil, !overlay.isBusy else { return }
+        DebugLog.write("undo clicked")
+        clearUndo()
+        request = Task { await self.runUndo(state) }
+    }
+
+    private func runUndo(_ state: UndoState) async {
+        defer { request = nil }
+        overlay.setBusy(true)
+        writing = true // the field is about to be written: no cancelling
+        defer {
+            writing = false
+            overlay.setBusy(false)
+            updateBars()
+        }
+        do {
+            guard await regainFocus(state.element, app: state.app, clipboardText: state.field.text, what: "original") else { return }
+            try await TextAccess.undo(state.field, result: state.result, in: state.element)
+            DebugLog.write("undo done")
+        } catch {
+            DebugLog.write("undo failed: \(error.localizedDescription)")
+            Notifier.show("Couldn't undo automatically", "The original text was copied to the clipboard.")
+        }
+    }
+
+    /// Makes sure `element` has the keyboard focus before it is written to, bringing its app forward when needed.
+    /// When that fails `clipboardText` is left on the clipboard instead and false is returned.
+    private func regainFocus(_ element: AXUIElement, app: NSRunningApplication?, clipboardText: String, what: String) async -> Bool {
+        let (focused, front) = await FocusTracker.focusState(of: element)
+        if focused && front { return true }
+        DebugLog.write("target lost focus (focused=\(focused), foreground=\(front)); bringing it back")
+        if await FocusTracker.restoreFocus(element, app: app) {
+            DebugLog.write("focus restored")
+            return true
+        }
+        DebugLog.write("could not restore focus; \(what) left on the clipboard")
+        TextAccess.setPasteboard(clipboardText)
+        Notifier.show("Focus changed", "The \(what) text was copied to the clipboard instead.")
+        return false
     }
 
     /// Reads the Slack thread open in `app`'s window and shows its summary under `anchor` (the Summarize button, Cocoa
@@ -94,6 +261,7 @@ final class ParaphraseController {
     private func runSummary(in app: NSRunningApplication?, below anchor: NSRect) async {
         defer { request = nil }
         summaryDismissed = false
+        clearUndo() // the summary takes over the bubble
         let action = TextAction.summarizeThread
         guard AXIsProcessTrusted() else {
             Notifier.show("Accessibility permission needed",
@@ -142,13 +310,17 @@ final class ParaphraseController {
         }
     }
 
-    private func run(_ action: TextAction) async {
+    private func run(_ action: TextAction, style: String? = nil) async {
         DebugLog.write("\(action) clicked (target=\(current == nil ? "none" : "set"), busy=\(overlay.isBusy))")
         // Declared first so every exit, including the guard below, frees the controller for the next click.
         defer { request = nil }
         guard let target = current, !overlay.isBusy else { return }
         overlay.setBusy(true)
         writing = false
+        clearUndo() // a new request replaces what could be undone (and reuses the bubble)
+        toneGrace?.cancel()
+        toneWanted = false
+        updateBars()
         let targetApp = NSWorkspace.shared.frontmostApplication
         previewing = true
         defer {
@@ -156,6 +328,7 @@ final class ParaphraseController {
             bubble.hide()
             writing = false
             overlay.setBusy(false)
+            updateBars()
         }
 
         do {
@@ -168,28 +341,18 @@ final class ParaphraseController {
 
             // The text streams into a bubble beside the button while the model writes it; the field itself is
             // only touched once the final text is in.
-            let result = try await ParaphraseClient.run(field.text, settings: settings, action: action) { [weak self] partial in
+            let result = try await ParaphraseClient.run(field.text, settings: settings, action: action, style: style) { [weak self] partial in
                 guard let self, self.previewing else { return }
                 self.bubble.show(partial, above: self.overlay.frame)
             }
             previewing = false
             bubble.hide()
 
-            let (focused, front) = await FocusTracker.focusState(of: target.element)
-            if !focused || !front {
-                DebugLog.write("target lost focus (focused=\(focused), foreground=\(front)); bringing it back")
-                if await FocusTracker.restoreFocus(target.element, app: targetApp) {
-                    DebugLog.write("focus restored")
-                } else {
-                    DebugLog.write("could not restore focus; result left on the clipboard")
-                    TextAccess.setPasteboard(result)
-                    Notifier.show("Focus changed", "The \(action.verb.lowercased())d text was copied to the clipboard instead.")
-                    return
-                }
-            }
+            guard await regainFocus(target.element, app: targetApp, clipboardText: result, what: "\(action.verb.lowercased())d") else { return }
             writing = true
             try await TextAccess.replace(field, in: target.element, with: result)
             DebugLog.write("field replaced")
+            offerUndo(UndoState(element: target.element, app: targetApp, field: field, result: result))
         } catch is CancellationError {
             DebugLog.write("\(action) cancelled by the user")
         } catch let error as URLError where error.code == .cancelled {

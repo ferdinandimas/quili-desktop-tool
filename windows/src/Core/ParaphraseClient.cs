@@ -38,10 +38,10 @@ namespace Quili.Core
         /// <summary>
         /// Runs the action on the server. <paramref name="onText"/> (optional) receives the rewritten text so
         /// far while the model is still writing it (each call replaces the previous one); the return value is
-        /// the final, authoritative text.
+        /// the final, authoritative text. <paramref name="style"/> (a tone preset) replaces the saved instruction for paraphrase only.
         /// </summary>
         public static async Task<string> RunAsync(string text, Settings settings, TextAction action,
-            CancellationToken ct = default, Action<string>? onText = null)
+            CancellationToken ct = default, Action<string>? onText = null, string? style = null)
         {
             var apiKey = settings.ApiKey;
             // With the mock toggle on, every action is answered by the built-in mock, which needs neither a
@@ -58,6 +58,14 @@ namespace Quili.Core
                 throw new InvalidOperationException("Server URL or API key not set. Open Settings from the tray icon.");
 
             text = TextHygiene.StripLoneSurrogates(text);
+            // Secrets (and optionally emails) never leave the machine: they travel as placeholders and come back after.
+            Redactor.Masked? masked = null;
+            if (settings.RedactSecrets)
+            {
+                masked = Redactor.Mask(text, settings.RedactEmails);
+                text = masked.Text;
+                if (masked.Values.Count > 0) DebugLog.Write($"redacted {masked.Values.Count} value(s) before sending");
+            }
             DebugLog.Write($"{action} request: POST {serverUrl}{action.Path()} ({TextHygiene.Describe(text)})");
             // The default encoder escapes every non-ASCII character (\uD83D\uDE00), so emoji cannot be
             // mangled in transit; the body is also sent explicitly as UTF-8.
@@ -66,7 +74,7 @@ namespace Quili.Core
             {
                 TextAction.TranslateToEnglish => JsonSerializer.Serialize(new { text, target_language = "English", stream = true }),
                 TextAction.SummarizeThread => JsonSerializer.Serialize(new { text, stream = true }),
-                _ => JsonSerializer.Serialize(new { text, style = TextHygiene.StripLoneSurrogates(settings.EffectiveStyle), stream = true }),
+                _ => JsonSerializer.Serialize(new { text, style = TextHygiene.StripLoneSurrogates(style ?? settings.EffectiveStyle), stream = true }),
             };
 
             HttpRequestMessage NewRequest()
@@ -106,16 +114,34 @@ namespace Quili.Core
             using var _ = resp;
             DebugLog.Write($"{action} response: HTTP {(int)resp.StatusCode}");
 
+            // Streamed text and the final text get the hidden values back (a summary shows "[hidden value n]" instead).
+            string Reveal(string t) => masked == null ? t
+                : action == TextAction.SummarizeThread ? Redactor.Relabel(t) : Redactor.Restore(t, masked.Values).Text;
+            Action<string>? shown = onText == null || masked == null ? onText : partial => onText(Reveal(partial));
+
+            string result;
             try
             {
                 if (resp.IsSuccessStatusCode && resp.Content.Headers.ContentType?.MediaType == "text/event-stream")
-                    return await ReadStreamAsync(resp, action, onText, token).ConfigureAwait(false);
-                return await ReadJsonAsync(resp, action, token).ConfigureAwait(false);
+                    result = await ReadStreamAsync(resp, action, shown, token).ConfigureAwait(false);
+                else
+                    result = await ReadJsonAsync(resp, action, token).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
                 throw new TimeoutException("The server took too long to respond.");
             }
+
+            if (masked == null) return result;
+            if (action == TextAction.SummarizeThread) return Redactor.Relabel(result);
+            var (restored, allPresent) = Redactor.Restore(result, masked.Values);
+            if (!allPresent)
+            {
+                DebugLog.Write("a protected value is missing from the result; nothing is replaced");
+                throw new InvalidOperationException(
+                    "Some protected values (secrets) were changed by the AI, so nothing was replaced. Turn off \"Redact secrets before sending\" in Settings > Privacy & apps to send the text as it is.");
+            }
+            return restored;
         }
 
         /// <summary>Reads server-sent events: `delta` (text so far), then `done` (final result) or `error`.</summary>

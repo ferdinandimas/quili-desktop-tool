@@ -34,6 +34,9 @@ final class FocusTracker {
     }
     /// Called on the main queue; nil means no editable field is focused.
     var onChange: ((TextTarget?) -> Void)?
+    /// Answers, on the polling queue, whether Quili may show in an app, given its names (bundle id, localized name,
+    /// executable name). Set once before `start()`; nil allows every app (the per-app list in Privacy & apps).
+    var appAllowed: (@Sendable ([String]) -> Bool)?
 
     func start() {
         let t = DispatchSource.makeTimerSource(queue: queue)
@@ -122,6 +125,8 @@ final class FocusTracker {
         guard let front = NSWorkspace.shared.frontmostApplication else { return nil }
         let pid = front.processIdentifier
         if pid == ownPid { report("skip own window"); return nil }
+        let names = [front.bundleIdentifier, front.localizedName, front.executableURL?.lastPathComponent].compactMap { $0 }
+        if let appAllowed, !appAllowed(names) { report("skip app filter: \(names.first ?? "?")"); return nil }
 
         let app = AXUIElementCreateApplication(pid)
         enableWebAccessibility(app, running: front)

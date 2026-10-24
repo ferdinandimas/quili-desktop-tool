@@ -50,14 +50,15 @@ namespace Quili.UI
         /// Shows <paramref name="text"/> above <paramref name="anchor"/> (screen pixels), or below it when there is no room.
         /// A <paramref name="tall"/> bubble (a summary) is taller and reads from its first line instead of following the newest ones.
         /// A <paramref name="closable"/> bubble has a close button and takes clicks (it stays until closed).
+        /// <paramref name="markdown"/> says whether <c>**bold**</c> is rendered; by default it follows <paramref name="tall"/>.
         /// </summary>
-        public void ShowText(string text, System.Drawing.Rectangle anchor, bool tall = false, bool closable = false)
+        public void ShowText(string text, System.Drawing.Rectangle anchor, bool tall = false, bool closable = false, bool? markdown = null)
         {
             if (anchor.IsEmpty) return;
             CancelFade();
             SetClickable(closable);
             Scroller.MaxHeight = tall ? TallMaxHeightDip : MaxHeightDip;
-            SetBody(text, markdown: tall);
+            SetBody(text, markdown: markdown ?? tall);
             if (tall) Scroller.ScrollToTop();
             else Scroller.ScrollToBottom(); // long text: keep the newest lines in view
 

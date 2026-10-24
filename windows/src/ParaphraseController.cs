@@ -31,11 +31,38 @@ namespace Quili
         CancellationTokenSource? _cts;
         bool _writing; // once the field is being written, cancelling would leave it half-replaced
 
+        // Tone chips: shown while the pointer is on the pill (and for a moment after it leaves, so it can reach the bar).
+        // Undo bar: shown after a replace; Undo puts the original text back, Original shows it in a bubble.
+        static readonly string[] UndoChips = { "Undo", "Original" };
+        static readonly TimeSpan ToneHideDelay = TimeSpan.FromMilliseconds(250), UndoLifetime = TimeSpan.FromSeconds(15);
+        readonly ChipBarWindow _toneBar = new(), _undoBar = new();
+        readonly DispatcherTimer _toneHideTimer, _undoTimer;
+        bool _pillHover, _toneBarHover;
+        UndoState? _undo;
+        bool _showingOriginal, _undoing; // the bubble shows the original text / an undo is being applied
+
         public ParaphraseController(Settings settings, Dispatcher dispatcher, Action<string, string, NoticeLevel> notify)
         {
             _settings = settings;
             _dispatcher = dispatcher;
             _notify = notify;
+            _toneHideTimer = new DispatcherTimer { Interval = ToneHideDelay };
+            _toneHideTimer.Tick += (_, _) =>
+            {
+                _toneHideTimer.Stop();
+                if (!_pillHover && !_toneBarHover) HideToneBar();
+            };
+            _undoTimer = new DispatcherTimer { Interval = UndoLifetime };
+            _undoTimer.Tick += (_, _) => ClearUndo();
+            _overlay.PillHoverChanged += hover => { _pillHover = hover; OnToneHover(); };
+            _toneBar.HoverChanged += hover => { _toneBarHover = hover; OnToneHover(); };
+            _toneBar.ChipClicked += index =>
+            {
+                HideToneBar();
+                if (index >= 0 && index < Tone.Presets.Count) _ = RunAsync(TextAction.Paraphrase, Tone.Presets[index].Instruction);
+            };
+            _undoBar.ChipClicked += index => { if (index == 0) _ = UndoAsync(); else ToggleOriginal(); };
+            _tracker.AppAllowed = names => AppFilter.Allows(names, _settings.AppFilterMode, _settings.AppFilterList);
             _overlay.ActionRequested += action => _ = RunAsync(action);
             _overlay.SettingsRequested += () => SettingsRequested?.Invoke();
             _overlay.CancelRequested += () =>
@@ -48,6 +75,7 @@ namespace Quili
             _caret.CaretChanged += c => _dispatcher.BeginInvoke(() => _overlay.Avoid(c));
             _bubble.CloseRequested += () =>
             {
+                _showingOriginal = false;
                 // Clicked before the summary finished: stop the request too, and let the fade finish the job.
                 if (_summarizing) { _summaryDismissed = true; _cts?.Cancel(); }
                 _bubble.FadeOut();
@@ -76,12 +104,14 @@ namespace Quili
             {
                 _tracker.Paused = value;
                 _threadWatcher.Paused = value;
-                if (value) { _overlay.HideOverlay(); _bubble.HideBubble(); _threadButton.HideButton(); }
+                if (value) { _overlay.HideOverlay(); HideToneBar(); ClearUndo(); _bubble.HideBubble(); _threadButton.HideButton(); }
             }
         }
 
         public void Dispose()
         {
+            _toneHideTimer.Stop();
+            _undoTimer.Stop();
             _tracker.Dispose();
             _caret.Dispose();
             _threadWatcher.Dispose();
@@ -105,12 +135,122 @@ namespace Quili
             // Keep the button where it is while a request is running; the result is validated afterwards.
             if (_overlay.IsBusy) return;
 
+            // The undo only belongs to the field it was made in.
+            if (_undo != null && (target == null || !FocusTracker.SameElement(_undo.Element, target.Element))) ClearUndo();
+            HideToneBar();
+
             // Same field as before (just moved or resized): a button the user dragged stays where they put it.
             bool sameField = target != null && _current != null && FocusTracker.SameElement(_current.Element, target.Element);
             _current = target;
             _caret.Follow(target?.Element);
             if (target == null) _overlay.HideOverlay();
             else _overlay.ShowAt(target.Bounds, sameField);
+            if (_undo != null) ShowUndoBar(); // follow the pill
+        }
+
+        /// <summary>The pointer moved onto or off the pill or the tone bar.</summary>
+        void OnToneHover()
+        {
+            if (_pillHover || _toneBarHover)
+            {
+                _toneHideTimer.Stop();
+                if (!_toneBar.IsShown && _current != null && !_overlay.IsBusy && !_overlay.Area.IsEmpty)
+                {
+                    HideUndoBar(); // same spot: the tone chips take over until they hide again
+                    _toneBar.Show(Tone.Labels, _overlay.Area, _overlay.ChipsPreferAbove);
+                }
+            }
+            else if (_toneBar.IsShown)
+            {
+                _toneHideTimer.Stop();
+                _toneHideTimer.Start(); // a short grace period so the pointer can cross the gap to the bar
+            }
+        }
+
+        void HideToneBar()
+        {
+            _toneHideTimer.Stop();
+            _pillHover = _toneBarHover = false;
+            bool wasShown = _toneBar.IsShown;
+            _toneBar.HideBar();
+            if (wasShown && _undo != null) ShowUndoBar();
+        }
+
+        void ShowUndoBar()
+        {
+            if (_undo == null || _toneBar.IsShown || _overlay.Area.IsEmpty) return;
+            _undoBar.Show(UndoChips, _overlay.Area, _overlay.ChipsPreferAbove);
+        }
+
+        /// <summary>Hides the undo bar (and the original-text bubble) but keeps the undo available.</summary>
+        void HideUndoBar()
+        {
+            _undoBar.HideBar();
+            if (_showingOriginal) { _showingOriginal = false; _bubble.HideBubble(); }
+        }
+
+        /// <summary>Forgets the undo: it is used up, timed out, or the field is no longer the one it was made in.</summary>
+        void ClearUndo()
+        {
+            _undo = null;
+            _undoTimer.Stop();
+            HideUndoBar();
+        }
+
+        /// <summary>The Original chip: shows the text from before the replace in a closable bubble, or hides it again.</summary>
+        void ToggleOriginal()
+        {
+            var undo = _undo;
+            if (undo == null) return;
+            if (_showingOriginal)
+            {
+                _showingOriginal = false;
+                _bubble.FadeOut();
+                return;
+            }
+            _showingOriginal = true;
+            var anchor = _undoBar.Area.IsEmpty ? _overlay.Area : System.Drawing.Rectangle.Union(_overlay.Area, _undoBar.Area); // clear of both the pill and the bar
+            _bubble.ShowText(undo.Original, anchor, tall: true, closable: true, markdown: false);
+        }
+
+        /// <summary>The Undo chip: puts the original text back where the result was written.</summary>
+        async Task UndoAsync()
+        {
+            var undo = _undo;
+            if (undo == null || _undoing || _overlay.IsBusy || _cts != null) return;
+            _undoing = true;
+            ClearUndo(); // one undo only; the bar goes away right away
+            DebugLog.Write($"undo clicked (selection={undo.WasSelection})");
+            try
+            {
+                var window = Native.GetForegroundWindow();
+                bool focused = FocusTracker.StillFocused(undo.Element), front = FocusTracker.IsForeground(undo.Element);
+                if (!focused || !front)
+                {
+                    DebugLog.Write($"undo: target lost focus (focused={focused}, foreground={front}); bringing it back");
+                    if (!await FocusTracker.RestoreFocusAsync(undo.Element, window))
+                    {
+                        DebugLog.Write("undo: could not restore focus; original left on the clipboard");
+                        TextAccess.TrySetClipboard(undo.Original);
+                        _notify("Focus changed", "The original text was copied to the clipboard instead.", NoticeLevel.Info);
+                        return;
+                    }
+                }
+
+                if (undo.WasSelection) await TextAccess.UndoAsync(undo, undo.Element);
+                else await TextAccess.ReplaceAsync(new FieldText(undo.Result, false), undo.Original, undo.Element);
+                DebugLog.Write("undo applied");
+            }
+            catch (Exception ex)
+            {
+                DebugLog.Write($"undo failed: {ex.GetType().Name}: {ex.Message}");
+                TextAccess.TrySetClipboard(undo.Original);
+                _notify("Couldn't undo automatically", "The original text was copied to the clipboard.", NoticeLevel.Error);
+            }
+            finally
+            {
+                _undoing = false;
+            }
         }
 
         /// <summary>
@@ -119,7 +259,7 @@ namespace Quili
         /// </summary>
         void StartSummary(System.Drawing.Rectangle anchor, IntPtr window)
         {
-            if (_cts != null || _overlay.IsBusy) return;
+            if (_cts != null || _overlay.IsBusy || _undoing) return;
             _ = SummarizeAsync(anchor, window);
         }
 
@@ -132,6 +272,7 @@ namespace Quili
                 return;
             }
             DebugLog.Write("summarize clicked");
+            ClearUndo(); // the bubble is about to show the summary
 
             using var cts = _cts = new CancellationTokenSource();
             _summarizing = true;
@@ -183,11 +324,15 @@ namespace Quili
             }
         }
 
-        async Task RunAsync(TextAction action)
+        /// <summary>Runs <paramref name="action"/> on the focused field; <paramref name="style"/> (a tone preset) replaces the saved paraphrase instruction.</summary>
+        async Task RunAsync(TextAction action, string? style = null)
         {
             var target = _current;
             DebugLog.Write($"{action} clicked (target={(target == null ? "none" : "set")}, busy={_overlay.IsBusy})");
-            if (target == null || _overlay.IsBusy || _cts != null) return;
+            if (target == null || _overlay.IsBusy || _cts != null || _undoing) return;
+
+            HideToneBar();
+            ClearUndo();
 
             _overlay.SetBusy(true);
             using var cts = _cts = new CancellationTokenSource();
@@ -210,7 +355,7 @@ namespace Quili
                     partial => _dispatcher.BeginInvoke(() =>
                     {
                         if (previewing && !cts.IsCancellationRequested) _bubble.ShowText(partial, _overlay.Area);
-                    }));
+                    }), style);
                 previewing = false;
                 _bubble.HideBubble();
 
@@ -232,6 +377,12 @@ namespace Quili
                 _writing = true;
                 await TextAccess.ReplaceAsync(field, result, target.Element);
                 DebugLog.Write("field replaced");
+
+                // Offer to undo it for a while.
+                _undo = new UndoState(target.Element, field.Text, result, field.IsSelection);
+                _undoTimer.Stop();
+                _undoTimer.Start();
+                ShowUndoBar();
             }
             catch (OperationCanceledException) when (cts.IsCancellationRequested)
             {

@@ -25,6 +25,13 @@ namespace Quili.Platform
 
         public volatile bool Paused;
 
+        /// <summary>
+        /// Asked with the focused app's process name (with and without ".exe"); false hides the button there.
+        /// Called on the polling thread, so it must only read settings (the "Privacy &amp; apps" list).
+        /// </summary>
+        public Func<string[], bool>? AppAllowed;
+        readonly Dictionary<int, string> _processNames = new();
+
         /// <summary>Raised on the polling thread; null means no editable field is focused.</summary>
         public event Action<TextTarget?>? TargetChanged;
 
@@ -122,6 +129,19 @@ namespace Quili.Platform
             return IsForeground(element) && StillFocused(element);
         }
 
+        /// <summary>The process name of <paramref name="pid"/> (cached: a pid's name does not change), or null when it can't be read.</summary>
+        string? ProcessName(int pid)
+        {
+            if (_processNames.TryGetValue(pid, out var cached)) return cached;
+            try
+            {
+                using var process = Process.GetProcessById(pid);
+                if (_processNames.Count > 256) _processNames.Clear();
+                return _processNames[pid] = process.ProcessName;
+            }
+            catch (Exception) { return null; }
+        }
+
         void Report(string reason)
         {
             if (reason == _lastReason) return;
@@ -142,6 +162,12 @@ namespace Quili.Platform
                 var fg = ForegroundPid();
                 if (fg != null && fg != info.ProcessId) { Report($"skip background window (foreground pid={fg}): {desc}"); return null; }
                 if (info.IsOffscreen || info.IsPassword) { Report($"skip offscreen/password: {desc}"); return null; }
+                var app = ProcessName(info.ProcessId);
+                if (app != null && AppAllowed != null && !AppAllowed(new[] { app, app + ".exe" }))
+                {
+                    Report($"skip app filter: {app}");
+                    return null;
+                }
                 if (!IsEditable(el, info.ControlType)) { Report($"skip not editable: {desc}"); return null; }
 
                 var r = info.BoundingRectangle;

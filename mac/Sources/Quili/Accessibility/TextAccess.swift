@@ -51,10 +51,41 @@ enum TextAccess {
             throw ParaphraseError(message: "The selection changed while paraphrasing. The result was copied to the clipboard.")
         }
 
+        try await paste(text, selectionOnly: field.isSelection, in: el)
+    }
+
+    /// Puts `original` back where `result` was written: over the whole field, or, when only a selection was replaced,
+    /// over the first occurrence of `result` in the field (found through the Accessibility value and selected by its
+    /// range). Throws, with the original left on the pasteboard, when the field no longer holds `result`.
+    static func undo(_ field: FieldText, result: String, in el: AXUIElement) async throws {
+        if field.isSelection {
+            guard selectText(result, in: el) else {
+                DebugLog.write("undo: could not find the result in the field")
+                setPasteboard(field.text)
+                throw ParaphraseError(message: "The original text was copied to the clipboard.")
+            }
+        }
+        try await paste(field.text, selectionOnly: field.isSelection, in: el)
+    }
+
+    /// Selects the first occurrence of `text` in the field's value; false when it is not there or cannot be selected.
+    private static func selectText(_ text: String, in el: AXUIElement) -> Bool {
+        guard let value = AX.string(el, kAXValueAttribute) else { return false }
+        let found = (value as NSString).range(of: text)
+        guard found.location != NSNotFound else { return false }
+        var range = CFRange(location: found.location, length: found.length)
+        guard let axRange = AXValueCreate(.cfRange, &range),
+              AXUIElementSetAttributeValue(el, kAXSelectedTextRangeAttribute as CFString, axRange) == .success else { return false }
+        guard let now = AX.string(el, kAXSelectedTextAttribute), key(now, max: 30) == key(text, max: 30) else { return false }
+        DebugLog.write("undo: result selected via AX range")
+        return true
+    }
+
+    private static func paste(_ text: String, selectionOnly: Bool, in el: AXUIElement) async throws {
         let backup = NSPasteboard.general.string(forType: .string)
         setPasteboard(text)
-        DebugLog.write("pasting (selectionOnly=\(field.isSelection))")
-        if !field.isSelection { pressCommand("a") }
+        DebugLog.write("pasting (selectionOnly=\(selectionOnly))")
+        if !selectionOnly { pressCommand("a") }
         pressCommand("v")
         await Pause.milliseconds(400) // let the target app read the pasteboard before restoring it
 

@@ -15,6 +15,22 @@ All notable changes to Quili. Versions follow the `VERSION` file; the newest cha
   | ![The button covers the text next to the caret](docs/images/caret-button-before.png) | ![The button sits to the right of the caret](docs/images/caret-button-after.png) |
 
 ### Added
+- **Tone chips in the pill.** Hover the green button and a small bar offers **Formal**, **Casual**, **Shorter** and
+  **Fix grammar**. One click paraphrases the text with that tone instead of the instruction saved in Settings.
+  macOS and Windows.
+- **Undo and compare.** After Quili replaces text, an **Undo** / **Original** bar shows for 15 seconds. **Undo**
+  puts the text back as it was (only the part Quili replaced, when you had selected a piece of text). **Original**
+  shows the text from before in a bubble you can close, so you can compare it with the result. If Quili cannot undo
+  automatically, the original is copied to the clipboard. macOS and Windows.
+- **Per-app list** (Settings → Privacy & apps). Hide the ✦ button in the apps you list (by name or bundle id on
+  macOS, by process name on Windows), or tick **Only show Quili in the apps listed below** to show it only there.
+  The Summarize thread button is not affected. macOS and Windows.
+- **Redact before sending** (Settings → Privacy & apps). On by default: passwords, API keys, tokens and private keys
+  are swapped for placeholders before the text leaves your computer, and put back in the answer; a summary shows
+  them as `[hidden value 1]`. If the AI changes a placeholder, nothing is replaced and Quili says why, so a secret
+  is never silently lost. Email addresses can be hidden too with **Also redact email addresses**. Applies to
+  paraphrase, translate and summarize. The server prompts were updated to keep the placeholders intact. macOS and
+  Windows.
 - **Summarize a Slack thread.** A ✦ button appears beside Slack's own "Summarize thread" button; Quili reads the
   open thread through the accessibility API (no Slack API or token), scrolls through a long thread to read all of
   it, and shows a short briefing: the key discussion, the outcome classified into decisions, action items, open

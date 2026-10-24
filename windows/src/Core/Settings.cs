@@ -31,6 +31,18 @@ namespace Quili.Core
         /// <summary>Offline demo: every request goes to the built-in <see cref="MockServer"/> instead of the real server.</summary>
         public bool MockMode { get; set; }
 
+        /// <summary>Privacy: keys, tokens and passwords are swapped for placeholders before the text is sent, and restored after.</summary>
+        public bool RedactSecrets { get; set; } = true;
+
+        /// <summary>Privacy: email addresses are hidden the same way (off by default).</summary>
+        public bool RedactEmails { get; set; }
+
+        /// <summary>"hide" (the default): no button in the apps listed. "only": the button shows only in the listed apps.</summary>
+        public string AppFilterMode { get; set; } = AppFilter.HideMode;
+
+        /// <summary>Process names, one per line (see <see cref="AppFilter"/>).</summary>
+        public string AppFilterList { get; set; } = "";
+
         static readonly string Dir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Quili");
         static readonly string FilePath = Path.Combine(Dir, "settings.json");

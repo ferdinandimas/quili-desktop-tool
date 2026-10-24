@@ -1,12 +1,13 @@
 import AppKit
 
 // The Settings card mirrors windows/src/UI/SettingsWindow.xaml: a borderless rounded card with a green header,
-// icon badges, pill-shaped fields and buttons. Sizes and colours are the XAML's.
+// icon badges, pill-shaped fields and buttons. Sizes and colours are the XAML's. The building blocks below are shared
+// with PrivacyWindow.swift.
 
-private final class FlippedView: NSView { override var isFlipped: Bool { true } }
+final class FlippedView: NSView { override var isFlipped: Bool { true } }
 
 /// A view that reacts to hover, press and click. Subclasses draw themselves from `hovered` / `pressed`.
-private class ClickView: NSView {
+class ClickView: NSView {
     var onClick: (() -> Void)?
     var hovered = false { didSet { if hovered != oldValue { needsDisplay = true } } }
     var pressed = false { didSet { if pressed != oldValue { needsDisplay = true } } }
@@ -34,7 +35,7 @@ private class ClickView: NSView {
 }
 
 /// The round tinted badge in front of each section title.
-private final class BadgeView: NSView {
+final class BadgeView: NSView {
     private let path: NSBezierPath
     init(_ path: NSBezierPath) {
         self.path = path
@@ -49,7 +50,7 @@ private final class BadgeView: NSView {
 }
 
 /// The green round robot badge in the header.
-private final class RobotBadge: NSView {
+final class RobotBadge: NSView {
     override func draw(_ dirtyRect: NSRect) {
         Brand.green.setFill()
         NSBezierPath(ovalIn: bounds).fill()
@@ -58,7 +59,7 @@ private final class RobotBadge: NSView {
 }
 
 /// A flat glyph button with a soft round highlight on hover (the XAML's IconButton).
-private final class IconButton: ClickView {
+final class IconButton: ClickView {
     var path: NSBezierPath { didSet { needsDisplay = true } }
     private let glyphSize: CGFloat, color: NSColor
     init(path: NSBezierPath, side: CGFloat, glyph: CGFloat, color: NSColor) {
@@ -78,7 +79,7 @@ private final class IconButton: ClickView {
 
 /// The Save (green, with a glow) and Cancel (white, outlined) buttons. The view is larger than the button so the
 /// glow has room; only the button itself is clickable.
-private final class PillButton: ClickView {
+final class PillButton: ClickView {
     static let glow: CGFloat = 24
     private let title: String, primary: Bool
     private var visual: NSRect { bounds.insetBy(dx: Self.glow, dy: Self.glow) }
@@ -130,7 +131,7 @@ private final class PillButton: ClickView {
 }
 
 /// The "Start at login" row: a rounded green box with a tick, then the label.
-private final class CheckRow: ClickView {
+final class CheckRow: ClickView {
     var checked = false { didSet { needsDisplay = true } }
     private let title: NSAttributedString
 
@@ -159,7 +160,7 @@ private final class CheckRow: ClickView {
 }
 
 /// The repository hyperlink.
-private final class LinkView: ClickView {
+final class LinkView: ClickView {
     private let text: NSAttributedString
     init(title: String) {
         text = NSAttributedString(string: title, attributes: [
@@ -173,7 +174,7 @@ private final class LinkView: ClickView {
 }
 
 /// The rounded input frame; the text control inside is drawn bare. The border turns green while focused.
-private final class FieldFrame: NSView {
+final class FieldFrame: NSView {
     var focused = false { didSet { if focused != oldValue { needsDisplay = true } } }
     override var isFlipped: Bool { true }
     override func draw(_ dirtyRect: NSRect) {
@@ -187,7 +188,7 @@ private final class FieldFrame: NSView {
 }
 
 /// The header strip: a soft green gradient that also drags the borderless window.
-private final class HeaderView: NSView {
+final class HeaderView: NSView {
     override var isFlipped: Bool { true }
     override func draw(_ dirtyRect: NSRect) {
         NSBezierPath(rect: bounds).addClip() // layer-backed views don't clip their own drawing
@@ -197,7 +198,7 @@ private final class HeaderView: NSView {
     override func mouseDown(with event: NSEvent) { window?.performDrag(with: event) }
 }
 
-private final class SettingsPanel: NSWindow {
+final class SettingsPanel: NSWindow {
     var fieldFrames: [FieldFrame] = []
     var onCancel: (() -> Void)?
 
@@ -227,6 +228,7 @@ final class SettingsWindow: NSObject, NSTextViewDelegate {
     private let mock = CheckRow(title: "Mock server (offline)")
     private let logging = CheckRow(title: "Write debug log")
     private var revealed = false
+    private lazy var privacy = PrivacyWindow(settings: settings)
 
     init(settings: Settings) {
         self.settings = settings
@@ -364,6 +366,14 @@ final class SettingsWindow: NSObject, NSTextViewDelegate {
         content.addSubview(logging)
         y += 26 + 16
 
+        // Privacy & apps: its own window, because this card is already tall.
+        let privacyBadge = BadgeView(Glyph.eyeOff)
+        privacyBadge.frame.origin = NSPoint(x: pad, y: y)
+        let privacyLink = LinkView(title: "Privacy & apps…")
+        privacyLink.setFrameOrigin(NSPoint(x: labelX, y: y + (34 - privacyLink.frame.height) / 2))
+        [privacyBadge, privacyLink].forEach(content.addSubview)
+        y += 34 + 16
+
         // Repository
         let gitBadge = BadgeView(Glyph.github)
         gitBadge.frame.origin = NSPoint(x: pad, y: y)
@@ -429,6 +439,7 @@ final class SettingsWindow: NSObject, NSTextViewDelegate {
         saveButton.onClick = { [weak self] in self?.save() }
         eye.onClick = { [weak self] in self?.toggleKey() }
         link.onClick = { NSWorkspace.shared.open(URL(string: AppInfo.repoUrl)!) }
+        privacyLink.onClick = { [weak self] in self?.privacy.show() }
         for field in [server, keySecure, keyPlain] { field.target = self; field.action = #selector(saveFromReturn) }
         styleView.delegate = self
     }

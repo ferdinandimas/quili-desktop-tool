@@ -49,6 +49,7 @@ namespace Quili.UI
         long _slideStartMs;
         const double SlideMs = 160;
         System.Drawing.Point _pressCursor, _lastCursor;
+        bool _dockedBelow;      // design 2, hanging under the field (above it otherwise)
         bool _docked;           // design 2: docked to the field, the green button has no zoom effect
         bool _animating;
         double _from, _target, _durationMs;
@@ -57,6 +58,10 @@ namespace Quili.UI
         public event Action<TextAction>? ActionRequested;
         public event Action? CancelRequested;
         public event Action? SettingsRequested;
+        /// <summary>The pointer entered (true) or left (false) the pill; the tone chip bar follows it.</summary>
+        public event Action<bool>? PillHoverChanged;
+        /// <summary>Whether a bar next to the pill goes above it: always, except when the pill is docked below the field.</summary>
+        public bool ChipsPreferAbove => !_dockedBelow;
         public bool IsBusy { get; private set; }
 
         public OverlayWindow()
@@ -223,6 +228,7 @@ namespace Quili.UI
         void ApplyDesign(DockStyle style)
         {
             _docked = style != DockStyle.Floating;
+            _dockedBelow = style == DockStyle.Below;
             CornerRadius pill = style switch
             {
                 DockStyle.Below => new CornerRadius(0, 0, DockedCornerDip, DockedCornerDip),
@@ -438,12 +444,14 @@ namespace Quili.UI
         {
             _hovered = true;
             Retarget();
+            PillHoverChanged?.Invoke(true);
         }
 
         void Root_MouseLeave(object sender, MouseEventArgs e)
         {
             _hovered = false;
             Retarget();
+            PillHoverChanged?.Invoke(false);
         }
 
         // Only the action buttons start work: the sparkle paraphrases, EN translates to English. The green button

@@ -46,6 +46,9 @@ namespace Quili.UI
             e.Handled = true;
         }
 
+        /// <summary>Secret redaction and the per-app list live in their own window; they save themselves.</summary>
+        void PrivacyLink_Click(object sender, RoutedEventArgs e) => new PrivacyWindow(_settings) { Owner = this }.ShowDialog();
+
         // The card has no title bar: the header is the drag handle, and the X closes without saving.
         void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {

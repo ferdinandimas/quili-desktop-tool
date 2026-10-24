@@ -30,9 +30,12 @@ enum ParaphraseClient {
         try await run(text, settings: settings, action: .paraphrase)
     }
 
-    /// Runs the action on the server. `onText` (optional) receives the rewritten text so far while the model is
-    /// still writing it (each call replaces the previous one); the return value is the final, authoritative text.
-    static func run(_ text: String, settings: Settings, action: TextAction,
+    /// Runs the action on the server. `style` (paraphrase only) replaces the instruction saved in Settings, which is how
+    /// the tone chips work. `onText` (optional) receives the rewritten text so far while the model is still writing it
+    /// (each call replaces the previous one); the return value is the final, authoritative text. With "Redact secrets"
+    /// on, secrets in `text` are swapped for placeholders before sending and put back into the answer (a summary only
+    /// gets a label), so the server never sees them.
+    static func run(_ text: String, settings: Settings, action: TextAction, style: String? = nil,
                     onText: (@MainActor (String) -> Void)? = nil) async throws -> String {
         let apiKey = settings.apiKey
         // With the mock toggle on, every action is answered by the built-in mock, which needs neither a server URL
@@ -49,6 +52,33 @@ enum ParaphraseClient {
             throw ParaphraseError(message: "Server URL or API key not set. Open Settings from the menu bar icon.")
         }
 
+        var outgoing = text
+        var masked: Redactor.Masked?
+        if settings.redactSecrets {
+            let result = Redactor.mask(text, emails: settings.redactEmails)
+            if !result.values.isEmpty {
+                masked = result
+                outgoing = result.text
+                DebugLog.write("\(action) redacted \(result.values.count) value(s) before sending")
+            }
+        }
+        /// Streamed text as shown to the user: originals back in place (a summary: labels).
+        func shown(_ partial: String) -> String {
+            guard let masked else { return partial }
+            return action == .summarizeThread ? Redactor.relabel(partial) : Redactor.restore(partial, values: masked.values).text
+        }
+        /// The final text; a protected value the model dropped or changed means nothing may be written back.
+        func finalText(_ result: String) throws -> String {
+            guard let masked else { return result }
+            if action == .summarizeThread { return Redactor.relabel(result) }
+            let restored = Redactor.restore(result, values: masked.values)
+            guard restored.allPresent else {
+                throw ParaphraseError(message: "Some protected values (secrets) were changed by the AI, so nothing was replaced. "
+                    + "Turn off \"Redact secrets before sending\" in Settings > Privacy & apps to send the text as it is.")
+            }
+            return restored.text
+        }
+
         var req = URLRequest(url: url, timeoutInterval: 45)
         req.httpMethod = "POST"
         req.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
@@ -57,23 +87,26 @@ enum ParaphraseClient {
         // Paraphrase carries the user's instruction; translate always targets English; a summary has no instruction.
         let body: [String: Any]
         switch action {
-        case .translateToEnglish: body = ["text": text, "target_language": "English", "stream": true]
-        case .summarizeThread: body = ["text": text, "stream": true]
-        case .paraphrase: body = ["text": text, "style": settings.effectiveStyle, "stream": true]
+        case .translateToEnglish: body = ["text": outgoing, "target_language": "English", "stream": true]
+        case .summarizeThread: body = ["text": outgoing, "stream": true]
+        case .paraphrase:
+            body = ["text": outgoing, "style": style.map { String($0.prefix(Settings.maxStyleLength)) } ?? settings.effectiveStyle,
+                    "stream": true]
         }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        DebugLog.write("\(action) request: POST \(url) (\(TextHygiene.describe(text)))")
+        DebugLog.write("\(action) request: POST \(url) (\(TextHygiene.describe(outgoing)))")
         do {
             let (bytes, resp) = try await send(req, action: action)
             let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
             DebugLog.write("\(action) response: HTTP \(status)")
             if (200..<300).contains(status), resp.mimeType == "text/event-stream" {
-                return try await readStream(bytes, action: action, onText: onText)
+                let preview: (@MainActor (String) -> Void)? = onText.map { callback in { partial in callback(shown(partial)) } }
+                return try finalText(try await readStream(bytes, action: action, onText: preview))
             }
             var data = Data()
             for try await byte in bytes { data.append(byte) }
-            return try parseJSON(data, status: status, action: action)
+            return try finalText(try parseJSON(data, status: status, action: action))
         } catch let error as URLError where error.code == .timedOut {
             throw ParaphraseError(message: "The server took too long to respond.")
         }

@@ -19,6 +19,8 @@ private final class BubbleView: NSView {
     var text = "" { didSet { needsDisplay = true } }
     /// A tall bubble (a summary) reads from its first line instead of following the newest ones.
     var tall = false { didSet { needsDisplay = true } }
+    /// Whether `**bold**` is rendered; a summary does, the original text shown by "Original" does not.
+    var markdown = false { didSet { needsDisplay = true } }
     /// A closable bubble (the finished summary) reserves room for, and draws, a × at its top-right.
     var closable = false { didSet { needsDisplay = true } }
     var onClose: (() -> Void)?
@@ -65,8 +67,8 @@ private final class BubbleView: NSView {
     }
 
     /// The card size that fits `text`.
-    static func size(for text: String, tall: Bool = false, closable: Bool = false) -> NSSize {
-        let drawn = attributed(text, markdown: tall)
+    static func size(for text: String, tall: Bool = false, closable: Bool = false, markdown: Bool? = nil) -> NSSize {
+        let drawn = attributed(text, markdown: markdown ?? tall)
         let bounding = drawn.boundingRect(with: NSSize(width: maxTextWidth, height: .greatestFiniteMagnitude),
                                           options: [.usesLineFragmentOrigin])
         let height = min(tall ? tallTextHeight : maxTextHeight, textHeight(drawn, width: ceil(bounding.width)))
@@ -93,7 +95,7 @@ private final class BubbleView: NSView {
             Brand.muted.setStroke()
             cross.stroke()
         }
-        let drawn = Self.attributed(text, markdown: tall)
+        let drawn = Self.attributed(text, markdown: markdown)
         let full = Self.textHeight(drawn, width: inner.width)
         NSGraphicsContext.saveGraphicsState()
         NSBezierPath(rect: inner).addClip()
@@ -131,14 +133,16 @@ final class BubbleWindow {
     var onClose: (() -> Void)? { didSet { view.onClose = onClose } }
 
     /// Shows `text` above `anchor` (Cocoa screen coordinates), or below it when there is no room. A `closable`
-    /// bubble has a × and takes clicks (it stays until closed); the others are click-through.
-    func show(_ text: String, above anchor: NSRect, tall: Bool = false, closable: Bool = false) {
+    /// bubble has a × and takes clicks (it stays until closed); the others are click-through. `markdown` (default: the
+    /// same as `tall`) turns `**bold**` into bold text.
+    func show(_ text: String, above anchor: NSRect, tall: Bool = false, closable: Bool = false, markdown: Bool? = nil) {
         cancelFade()
         panel.ignoresMouseEvents = !closable
         view.closable = closable
         view.tall = tall
+        view.markdown = markdown ?? tall
         view.text = text
-        let size = BubbleView.size(for: text, tall: tall, closable: closable)
+        let size = BubbleView.size(for: text, tall: tall, closable: closable, markdown: markdown)
         let visible = (NSScreen.screens.first { $0.frame.intersects(anchor) } ?? NSScreen.main)?.visibleFrame ?? .zero
         var x = anchor.maxX - size.width
         var y = anchor.maxY + Self.gap

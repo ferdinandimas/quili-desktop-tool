@@ -3,7 +3,9 @@ import Security
 import ServiceManagement
 
 /// Server URL and style live in UserDefaults; the API key lives in the Keychain.
-final class Settings {
+/// Only reads and writes UserDefaults and the Keychain, which are safe to use from any thread (the app filter is read
+/// on the focus tracker's queue).
+final class Settings: @unchecked Sendable {
     static let defaultStyle =
         "Polish the provided text to improve grammar, verb tenses, clarity, and natural flow while preserving the original meaning, tone, and intent.\n\nKeep the wording and sentence structure as close to the original as possible, making only necessary adjustments. Use natural, conversational English without making it overly formal or complicated.\n\nReturn only the revised text, without explanations or additional commentary."
     // Earlier defaults: anyone still on one of these never customised it and moves to the current default.
@@ -74,6 +76,30 @@ final class Settings {
     var mockMode: Bool {
         get { defaults.bool(forKey: "mockMode") }
         set { defaults.set(newValue, forKey: "mockMode") }
+    }
+
+    /// Hide secrets (keys, tokens, passwords) before text is sent; on by default. See `Redactor`.
+    var redactSecrets: Bool {
+        get { defaults.object(forKey: "redactSecrets") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "redactSecrets") }
+    }
+
+    /// Also hide email addresses when redacting.
+    var redactEmails: Bool {
+        get { defaults.bool(forKey: "redactEmails") }
+        set { defaults.set(newValue, forKey: "redactEmails") }
+    }
+
+    /// "hide": show the ✦ button everywhere except the listed apps; "only": show it only in the listed apps.
+    var appFilterMode: String {
+        get { defaults.string(forKey: "appFilterMode") ?? AppFilter.hideMode }
+        set { defaults.set(newValue, forKey: "appFilterMode") }
+    }
+
+    /// App names / bundle ids, one per line (see `AppFilter`).
+    var appFilterList: String {
+        get { defaults.string(forKey: "appFilterList") ?? "" }
+        set { defaults.set(newValue, forKey: "appFilterList") }
     }
 
     var runAtStartup: Bool {

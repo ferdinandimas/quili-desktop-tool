@@ -365,7 +365,11 @@ final class OverlayWindow {
     var onAction: ((TextAction) -> Void)? { didSet { view.onAction = onAction } }
     var onCancel: (() -> Void)? { didSet { view.onCancel = onCancel } }
     var onSettings: (() -> Void)? { didSet { view.onSettings = onSettings } }
+    /// The pointer entered (true) or left (false) the pill; the tone bar follows it.
+    var onPillHover: ((Bool) -> Void)?
     private(set) var isBusy = false
+    /// Whether the tone bar goes above the pill: not when the pill is docked below its field, where "above" is the field.
+    var chipsPreferAbove: Bool { view.dock != .belowField }
 
     /// The overlay's current frame in Cocoa screen coordinates; the preview bubble anchors to it.
     var frame: NSRect { panel.frame }
@@ -385,6 +389,7 @@ final class OverlayWindow {
         view.onHover = { [weak self] inside in
             self?.hovered = inside
             self?.startAnimating()
+            self?.onPillHover?(inside)
         }
         // Dragging: docked (design 2) it turns into the floating pill (design 1) as soon as it is picked up.
         view.onDragStart = { [weak self] in

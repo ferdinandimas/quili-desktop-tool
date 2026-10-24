@@ -9,6 +9,9 @@ namespace Quili.Platform
 {
     public sealed record FieldText(string Text, bool IsSelection, TextPatternRange? Range = null);
 
+    /// <summary>What a finished replace changed, kept so it can be undone: the field, the text before and after, and whether only a selection was replaced.</summary>
+    public sealed record UndoState(AutomationElement Element, string Original, string Result, bool WasSelection);
+
     /// <summary>
     /// Reads and replaces the text of a focused field. Reading prefers UI Automation; replacing and the read
     /// fallback go through the clipboard + Ctrl+A/C/V, which works in Chromium/Electron editors where
@@ -121,6 +124,29 @@ namespace Quili.Platform
             }
             DebugLog.Write("paste verified");
             if (backup != null) TrySetClipboard(backup);
+        }
+
+        /// <summary>
+        /// Puts <see cref="UndoState.Original"/> back in place of <see cref="UndoState.Result"/> after a selection was replaced:
+        /// finds the result in the field, selects it and pastes over it. Throws when it can't be found or pasted
+        /// (the caller then leaves the original on the clipboard).
+        /// </summary>
+        public static async Task UndoAsync(UndoState state, AutomationElement el)
+        {
+            var range = await Task.Run(() =>
+            {
+                try
+                {
+                    return el.TryGetCurrentPattern(TextPattern.Pattern, out var tp)
+                        ? ((TextPattern)tp).DocumentRange.FindText(state.Result, false, false)
+                        : null;
+                }
+                catch (Exception) { return null; }
+            });
+            if (range == null)
+                throw new InvalidOperationException("The rewritten text could not be found in the field.");
+            // Same path as a normal replace: select the range, check it, paste, verify.
+            await ReplaceAsync(new FieldText(state.Result, true, range), state.Original, el);
         }
 
         static async Task<bool> RestoreSelectionAsync(FieldText field, AutomationElement el)
