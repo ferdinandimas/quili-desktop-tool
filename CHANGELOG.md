@@ -27,6 +27,8 @@ All notable changes to Quili. Versions follow the `VERSION` file; the newest cha
 
   ![The Tone button in the pill, with its bar of tones](docs/images/tone-button.png)
 
+  ![Paraphrase tone in Settings, with Formal selected](docs/images/tone-settings.png)
+
 - **Undo and compare.** After Quili replaces text, an **Undo** / **Original** bar shows for 15 seconds. **Undo**
   puts the text back as it was (only the part Quili replaced, when you had selected a piece of text). **Original**
   shows the text from before in a bubble you can close, so you can compare it with the result. If Quili cannot undo
