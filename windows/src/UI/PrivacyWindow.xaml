@@ -242,8 +242,7 @@
                            Text="A small ! shows on the Quili button. The check runs on this computer; nothing is sent." />
 
                 <CheckBox x:Name="ContextBox" Content="Use the messages above as context in Slack" Style="{StaticResource GreenCheck}" Margin="2,16,0,0" />
-                <TextBlock Foreground="{StaticResource Muted}" TextWrapping="Wrap" FontSize="13.5" Margin="42,4,0,0"
-                           Text="Quili reads the last messages of the Slack conversation and sends them with your text, so the rewrite fits the conversation. Off by default. Only in Slack." />
+                <TextBlock x:Name="ContextHint" Foreground="{StaticResource Muted}" TextWrapping="Wrap" FontSize="13.5" Margin="42,4,0,0" />
 
                 <!-- On this computer -->
                 <Grid Margin="0,26,0,0">

@@ -44,6 +44,12 @@ namespace Quili.Core
         /// <summary>Privacy: in Slack, Paraphrase and Translate also send the last messages of the conversation as context; off by default.</summary>
         public bool UseContext { get; set; }
 
+        /// <summary>
+        /// The reply-context feature is switched off for now because it is not stable: it is never used, and the Privacy window shows
+        /// the setting unticked and disabled. Set this to true to bring it back (nothing else needs to change).
+        /// </summary>
+        public const bool ContextFeatureAvailable = false;
+
         /// <summary>Look for a newer Quili release once a day (asks GitHub only); on by default.</summary>
         public bool AutoUpdateCheck { get; set; } = true;
 

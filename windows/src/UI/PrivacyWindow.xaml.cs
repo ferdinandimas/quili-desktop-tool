@@ -18,7 +18,11 @@ namespace Quili.UI
             RedactBox.IsChecked = settings.RedactSecrets;
             EmailBox.IsChecked = settings.RedactEmails;
             WarnBox.IsChecked = settings.WarnSecrets;
-            ContextBox.IsChecked = settings.UseContext;
+            ContextBox.IsEnabled = Settings.ContextFeatureAvailable;
+            ContextBox.IsChecked = Settings.ContextFeatureAvailable && settings.UseContext;
+            ContextHint.Text = Settings.ContextFeatureAvailable
+                ? "Quili reads the last messages of the Slack conversation and sends them with your text, so the rewrite fits the conversation. Off by default. Only in Slack."
+                : "Coming soon. Quili will read the last messages of the Slack conversation and send them with your text, so the rewrite fits the conversation. It is switched off until it is stable.";
             HistoryBox.IsChecked = settings.KeepHistory;
             UpdateBox.IsChecked = settings.AutoUpdateCheck;
             OnlyBox.IsChecked = settings.AppFilterMode == AppFilter.OnlyMode;
@@ -48,7 +52,7 @@ namespace Quili.UI
             _settings.RedactSecrets = RedactBox.IsChecked == true;
             _settings.RedactEmails = EmailBox.IsChecked == true;
             _settings.WarnSecrets = WarnBox.IsChecked == true;
-            _settings.UseContext = ContextBox.IsChecked == true;
+            if (Settings.ContextFeatureAvailable) _settings.UseContext = ContextBox.IsChecked == true;
             _settings.KeepHistory = HistoryBox.IsChecked == true;
             _settings.AutoUpdateCheck = UpdateBox.IsChecked == true;
             if (!_settings.KeepHistory) HistoryStore.Clear(); // turning it off also clears what was kept

@@ -84,7 +84,10 @@ final class PrivacyWindow: NSObject {
         useContext.frame.origin = NSPoint(x: pad + 2, y: y)
         content.addSubview(useContext)
         y += 26 + 6
-        y = note("Quili reads the last messages of the Slack conversation and sends them with your text, so the rewrite fits the conversation. Off by default. Only in Slack.",
+        useContext.isEnabled = Settings.contextFeatureAvailable
+        y = note(Settings.contextFeatureAvailable
+                 ? "Quili reads the last messages of the Slack conversation and sends them with your text, so the rewrite fits the conversation. Off by default. Only in Slack."
+                 : "Coming soon. Quili will read the last messages of the Slack conversation and send them with your text, so the rewrite fits the conversation. It is switched off until it is stable.",
                  x: pad + 2 + 26 + 14, y: y, width: inner - 2 - 26 - 14, in: content) + 24
 
         // On this computer
@@ -222,7 +225,7 @@ final class PrivacyWindow: NSObject {
         settings.redactSecrets = redactSecrets.checked
         settings.redactEmails = redactEmails.checked
         settings.warnSecrets = warnSecrets.checked
-        settings.useContext = useContext.checked
+        if Settings.contextFeatureAvailable { settings.useContext = useContext.checked }
         settings.keepHistory = keepHistory.checked
         settings.autoUpdateCheck = autoUpdate.checked
         if !keepHistory.checked { HistoryStore.shared.clear() }

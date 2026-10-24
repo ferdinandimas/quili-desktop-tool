@@ -24,11 +24,11 @@ All notable changes to Quili. Versions follow the `VERSION` file; the newest cha
   contains a secret**. macOS and Windows.
 
   ![The orange ! on the Quili button and its tooltip](docs/images/secret-warning.png)
-- **Reply-aware writing (opt-in).** With **Privacy & apps → Use the messages above as context in Slack** on, Paraphrase
-  and Translate to English in Slack read the last messages of the conversation and send them with your text, so the
-  rewrite fits what is being discussed. Secrets in those messages are redacted like your own text, nothing is stored
-  in History, and the review bubble says "Used 6 messages from Slack as context". Off by default; only in Slack.
-  macOS and Windows.
+- **Reply-aware writing (coming soon, switched off).** The groundwork is in: in Slack, Paraphrase and Translate to
+  English would read the last messages of the conversation and send them with your text, so the rewrite fits what is
+  being discussed (secrets redacted, nothing stored in History, a note in the review bubble). It is not stable yet, so it
+  is switched off: **Privacy & apps → Use the messages above as context in Slack** is shown unticked and disabled, with
+  a "Coming soon" note, and nothing is read or sent. macOS and Windows.
 
   ![The "Use the messages above as context in Slack" setting](docs/images/use-context-setting.png)
 - **The likely next button is highlighted.** If the text in the field does not look like English, a small **EN** tag

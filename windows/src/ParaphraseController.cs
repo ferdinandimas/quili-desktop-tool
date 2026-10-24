@@ -574,7 +574,7 @@ namespace Quili
                 // With "Use the messages above as context in Slack" on, the last messages of the conversation go along
                 // (paraphrase and translate only). A failed read just sends the text without them.
                 ContextText? context = null;
-                if (_settings.UseContext && (action is TextAction.Paraphrase or TextAction.TranslateToEnglish) && ThreadReader.IsSlack(targetWindow))
+                if (Settings.ContextFeatureAvailable && _settings.UseContext && (action is TextAction.Paraphrase or TextAction.TranslateToEnglish) && ThreadReader.IsSlack(targetWindow))
                 {
                     var input = target.Element;
                     context = await Task.Run(() => ThreadReader.ReadContext(targetWindow, input));

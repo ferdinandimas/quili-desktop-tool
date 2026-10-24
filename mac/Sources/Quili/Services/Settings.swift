@@ -96,10 +96,14 @@ final class Settings: @unchecked Sendable {
         set { defaults.set(newValue, forKey: "warnSecrets") }
     }
 
+    /// The reply-context feature is switched off for now because it is not stable: `useContext` reads false and the Privacy
+    /// window shows the setting unticked and disabled. Set this to true to bring it back (nothing else needs to change).
+    static let contextFeatureAvailable = false
+
     /// Send the last messages of the Slack conversation along with the text of a paraphrase or translation, so the
     /// rewrite fits the conversation; off by default.
     var useContext: Bool {
-        get { defaults.bool(forKey: "useContext") }
+        get { Self.contextFeatureAvailable && defaults.bool(forKey: "useContext") }
         set { defaults.set(newValue, forKey: "useContext") }
     }
 

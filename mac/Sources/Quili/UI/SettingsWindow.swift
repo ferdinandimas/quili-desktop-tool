@@ -134,6 +134,14 @@ final class PillButton: ClickView {
 /// The "Start at login" row: a rounded green box with a tick, then the label.
 final class CheckRow: ClickView {
     var checked = false { didSet { needsDisplay = true } }
+    /// A disabled row is dimmed and ignores the pointer.
+    var isEnabled = true {
+        didSet {
+            alphaValue = isEnabled ? 1 : 0.45
+            hovered = false
+            window?.invalidateCursorRects(for: self)
+        }
+    }
     private let title: NSAttributedString
 
     init(title: String) {
@@ -144,6 +152,8 @@ final class CheckRow: ClickView {
         onClick = { [weak self] in self?.checked.toggle() }
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { isEnabled ? super.hitTest(point) : nil }
 
     override func draw(_ dirtyRect: NSRect) {
         let box = NSRect(x: 0, y: (bounds.height - 26) / 2, width: 26, height: 26)
