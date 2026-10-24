@@ -7,6 +7,8 @@ All notable changes to Quili. Versions follow the `VERSION` file; the newest cha
 ## 1.0.1
 
 ### Fixed
+- **The Windows app can be built again.** A character in the caret-following code stopped the Windows build from
+  compiling, so no Windows download could be produced. Windows only.
 - **The Settings and Privacy & apps windows no longer stay on top of everything (macOS).** They come to the front
   when you open them; after that they behave like normal windows and go behind another app's window when you click
   it. Windows already worked this way.

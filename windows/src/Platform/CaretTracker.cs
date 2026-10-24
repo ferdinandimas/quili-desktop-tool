@@ -77,7 +77,7 @@ namespace Quili.Platform
                 if (before.MoveEndpointByUnit(TextPatternRangeEndpoint.Start, TextUnit.Character, -1) == -1)
                 {
                     var text = before.GetText(2);
-                    if (text.IndexOf('\n') < 0 && text.IndexOf('\r') < 0 && text.IndexOf(' ') < 0 && text.IndexOf(' ') < 0)
+                    if (text.IndexOf('\n') < 0 && text.IndexOf('\r') < 0 && text.IndexOf('\u2028') < 0 && text.IndexOf('\u2029') < 0)
                     {
                         rect = Rects(before).LastOrDefault();
                         if (rect.Height > 0) return Box(rect.Right, rect);
