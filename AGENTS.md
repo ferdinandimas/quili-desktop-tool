@@ -84,9 +84,19 @@ Keep this list current. Anything not listed here is expected to match.
 - For a visible UI fix or feature, add before/after or demo screenshots under `docs/images/` and show them in the entry when you have them.
 - When a release is cut (the `VERSION` file is bumped and tagged), rename `## Unreleased` to `## <version>` and start a new empty `## Unreleased`.
 
+## Commits
+
+**Every medium-sized or larger change is committed as soon as it is done**, so the history shows what changed and when. That is the same bar as the changelog (a feature, a visible behaviour change, a notable bug fix, a larger refactor); typo fixes and tiny tweaks can wait and ride along with the next commit.
+
+- Commit locally only. **Never push** unless asked: a push is a separate request.
+- One commit per change, with the code, its docs (`CHANGELOG.md`, `README.md`, this file) and any screenshots together, so the commit tells the whole story. Don't mix unrelated work in one commit.
+- Write the message for a reader of the history: a short imperative subject saying what the change does, then a few lines on the why or the notable details. Say in it when a platform could not be compiled.
+- Commit only once both platforms carry the change (see the rule at the top), and after the macOS side compiles when you can build it. If the build fails, fix it first; don't commit a broken tree.
+- Never commit secrets or build output (`dist/`, `.p12` / `.pem` / `.key`).
+
 ## Practical notes
 
 - `mac/build.sh` signs with the self-signed "Quili Dev" certificate when it exists in the keychain (create it once with `mac/make-signing-cert.sh`), otherwise ad-hoc. With an ad-hoc signature macOS forgets the Accessibility permission after every rebuild: remove and re-add `dist/mac/Quili.app` in System Settings → Privacy & Security → Accessibility. Never commit `.p12` / `.pem` / `.key` files.
 - `dist/` is build output and is not tracked.
 - The version comes from the `VERSION` file; both build scripts stamp it into the app.
-- Don't commit unless asked.
+- Commit and push: see *Commits* above (commit after medium-sized or larger changes; push only when asked).
