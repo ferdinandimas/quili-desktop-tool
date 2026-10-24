@@ -207,6 +207,35 @@ private final class OverlayView: NSView {
 
     private var paraphraseMinX: CGFloat { bounds.width - bounds.height - Self.actionWidth }
 
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds,
+                                       options: [.mouseEnteredAndExited, .mouseMoved, .cursorUpdate, .activeAlways, .inVisibleRect],
+                                       owner: self, userInfo: nil))
+    }
+    override func mouseEntered(with event: NSEvent) {
+        updateCursor()
+        onHover?(true)
+        mouseMoved(with: event)
+    }
+    override func mouseMoved(with event: NSEvent) {
+        updateCursor()
+        let region = region(at: convert(event.locationInWindow, from: nil))
+        if busy {
+            if region != .circle { cancelReady = true }
+            hovered = cancelReady && region == .circle ? .circle : nil
+        } else {
+            hovered = region
+        }
+    }
+    override func mouseExited(with event: NSEvent) {
+        cancelReady = true
+        hovered = nil
+        pressed = nil
+        onHover?(false)
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         let h = bounds.height
 
