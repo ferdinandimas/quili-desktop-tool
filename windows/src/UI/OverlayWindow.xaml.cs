@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Controls;
 using System.Windows.Media.Animation;
 using System.Diagnostics;
+using System.Windows.Threading;
 using Quili.Core;
 using Quili.Platform;
 
@@ -36,6 +37,17 @@ namespace Quili.UI
         const int DragThresholdPx = 4;
         bool _pressed, _dragging, _dragged;
         bool _userMoved;        // the user dragged the button; keep it there until focus moves to another field
+        // Stepping aside for the typing caret: _baseX is the default place, _shifted says the button is one button
+        // width to the right of it because the caret was under it.
+        int _baseX;
+        int _restX;             // where the button is, or is sliding to, horizontally
+        const int CaretGapDip = 5;
+        bool _shifted;
+        Rect? _lastCaret;       // screen pixels
+        DispatcherTimer? _slide;
+        int _slideFrom, _slideTo;
+        long _slideStartMs;
+        const double SlideMs = 160;
         System.Drawing.Point _pressCursor, _lastCursor;
         bool _docked;           // design 2: docked to the field, the green button has no zoom effect
         bool _animating;
@@ -149,6 +161,7 @@ namespace Quili.UI
         {
             if (_userMoved && sameField) return;
             _userMoved = false;
+            if (!sameField) _lastCaret = null;
 
             double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
             _size = (int)Math.Round(CollapsedDip * scale);
@@ -191,6 +204,11 @@ namespace Quili.UI
             ApplyDesign(style);
             _x = Math.Max(screen.Left, Math.Min(x, screen.Right - _size));
             _y = Math.Max(screen.Top, Math.Min(y, screen.Bottom - _size));
+            _slide?.Stop();
+            _baseX = _x;
+            _shifted = CaretIsUnderButton();
+            if (_shifted) _x = SteppedAsideX();
+            _restX = _x;
 
             // WPF only renders a window's content once it has been shown through WPF (ShowActivated=False
             // in the XAML keeps it from stealing focus); SetWindowPos alone just shows an empty shell.
@@ -240,8 +258,74 @@ namespace Quili.UI
             OverlayArea = new System.Drawing.Rectangle(_x - (expandedPx - _size), _y, expandedPx, _size);
         }
 
+        // ---- Stepping aside for the caret ----
+
+        /// <summary>
+        /// The typing caret moved (screen pixels), or null when it is unknown. While it is under the button the button
+        /// slides one button width to the right so the text stays visible, and it slides back once the caret has left.
+        /// </summary>
+        public void Avoid(Rect? caret)
+        {
+            _lastCaret = caret;
+            if (_userMoved || !IsVisible || IsBusy) return;
+            bool wanted = CaretIsUnderButton();
+            int target = wanted ? SteppedAsideX() : _baseX;
+            // Also follows the caret while it keeps moving under the button, so the gap to it stays the same.
+            if (wanted == _shifted && target == _restX) return;
+            _shifted = wanted;
+            _restX = target;
+            SlideTo(target);
+        }
+
+        /// <summary>Whether the caret is at the button's default place (judged there, not where the button is now, so it does not flip back and forth around its own new position).</summary>
+        bool CaretIsUnderButton()
+        {
+            if (_lastCaret is not Rect caret || _size == 0) return false;
+            double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
+            double padX = 6 * scale, padY = 4 * scale;
+            var button = new Rect(_baseX - padX, _y - padY, _size + 2 * padX, _size + 2 * padY);
+            return button.IntersectsWith(new Rect(caret.X - 2, caret.Y, caret.Width + 4, Math.Max(1, caret.Height)));
+        }
+
+        /// <summary>
+        /// Where the button goes when the caret is under it: its left edge 5 dip to the right of the caret (one button
+        /// width to the right of the default place when the caret is unknown), never left of the default place, and kept
+        /// on the screen.
+        /// </summary>
+        int SteppedAsideX()
+        {
+            int gap = (int)Math.Round(CaretGapDip * VisualTreeHelper.GetDpi(this).DpiScaleX);
+            int x = _lastCaret is Rect caret ? (int)Math.Ceiling(caret.Right) + gap : _baseX + _size;
+            var screen = System.Windows.Forms.Screen.FromRectangle(new System.Drawing.Rectangle(_baseX, _y, _size, _size)).WorkingArea;
+            x = Math.Min(x, screen.Right - _size);
+            return Math.Max(_baseX, x);
+        }
+
+        void SlideTo(int x)
+        {
+            _slideFrom = _x;
+            _slideTo = x;
+            _slideStartMs = _clock.ElapsedMilliseconds;
+            if (_slide == null)
+            {
+                _slide = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(16) };
+                _slide.Tick += (_, _) =>
+                {
+                    double t = Math.Min(1, (_clock.ElapsedMilliseconds - _slideStartMs) / SlideMs);
+                    double eased = 1 - Math.Pow(1 - t, 3);
+                    _x = (int)Math.Round(_slideFrom + (_slideTo - _slideFrom) * eased);
+                    PlaceWindow();
+                    if (t >= 1) _slide!.Stop();
+                };
+            }
+            _slide.Start();
+        }
+
         public void HideOverlay()
         {
+            _slide?.Stop();
+            _shifted = false;
+            _lastCaret = null;
             StopAnimation();
             EndDrag();
             _userMoved = false; // focus lost: the next field starts from its default placement
@@ -321,6 +405,7 @@ namespace Quili.UI
                 _dragging = true;
                 _dragged = true;
                 _userMoved = true;
+                _slide?.Stop();
                 ApplyDesign(DockStyle.Floating);
                 Root.CaptureMouse();
                 Root.Cursor = Cursors.SizeAll;

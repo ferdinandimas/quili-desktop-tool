@@ -8,6 +8,7 @@ A tray / menu-bar app for **Windows** and **macOS**. When you focus a text field
 - **Write:** clipboard + Ctrl+V over the original selection (restored first; if it changed while the request ran, the result is copied to the clipboard instead), or Ctrl+A / Ctrl+V over the whole field when nothing was selected (works in Chromium/Electron editors). Your previous *text* clipboard is restored.
 - **Paraphrase:** `POST {server}/api/paraphrase` with an `X-API-Key` header; the server detects the language and replies in it. The text streams into a small preview bubble next to the button while the model writes it, and the field is replaced once it is complete. Set the server URL and API key in Settings. The API key is stored encrypted with Windows DPAPI in `%APPDATA%\Quili\settings.json`.
 - **Buttons:** the green round button (tooltip **Text Tool**) paraphrases on a click. Hovering it expands a pill with two actions: **EN** translates the text into natural, paraphrased English (`POST {server}/api/translate`, whatever the original language) and the sparkle **Paraphrase**, which follows the **Paraphrase instruction** from Settings (e.g. "make it formal", "shorter", "translate to Indonesian").
+- **Stays out of your way:** when the typing caret reaches the ✦ button (for example at the bottom-right of a text field) the button slides to the right of the caret (with a 5 px gap) so you can still see what you type, and slides back once the caret has moved away (after a new line, say). A button you dragged yourself stays where you put it.
 - Settings also shows a link to this repository.
 - Text is only sent when you click the button. Password fields are ignored.
 
@@ -115,6 +116,8 @@ cd mac && ./build.sh debug    # compile check only
 After a build, grant **System Settings → Privacy & Security → Accessibility** to Quili once; without it no fields are detected and paste is blocked. To keep that permission across rebuilds, create the stable signing certificate once with `mac/make-signing-cert.sh` (see *Signing* in the macOS section below).
 
 ## Releases
+What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
+
 Downloads are on the repo's **Releases** page: `Quili-Setup-vX.Y.Z.exe` (Windows installer), `Quili-vX.Y.Z-win-x64.exe` (portable) and `Quili-vX.Y.Z-macos.zip` (universal app).
 
 To publish a release (GitHub Actions builds both platforms with the same `build.sh` scripts, so you don't need a Mac):

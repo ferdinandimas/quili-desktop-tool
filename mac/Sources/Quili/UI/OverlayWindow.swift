@@ -351,6 +351,16 @@ final class OverlayWindow {
     private var expansion: CGFloat = 0
     private var hovered = false
     private var userMoved = false   // the user dragged the button; keep it there until focus moves to another field
+    // Stepping aside for the typing caret: `baseAnchor` is the default place, `shifted` says the button is one button
+    // width to the right of it because the caret was under it.
+    private var baseAnchor = NSPoint.zero
+    private var shifted = false
+    private var lastCaret: CGRect?   // AX coordinates
+    private var restX: CGFloat = 0   // where the button is, or is sliding to, horizontally
+    private static let caretGap: CGFloat = 5
+    private var slide: Timer?
+    private var slideFrom: CGFloat = 0, slideTo: CGFloat = 0, slideStart = Date()
+    private static let slideDuration: TimeInterval = 0.16
 
     var onAction: ((TextAction) -> Void)? { didSet { view.onAction = onAction } }
     var onCancel: (() -> Void)? { didSet { view.onCancel = onCancel } }
@@ -378,6 +388,7 @@ final class OverlayWindow {
         }
         // Dragging: docked (design 2) it turns into the floating pill (design 1) as soon as it is picked up.
         view.onDragStart = { [weak self] in
+            self?.slide?.invalidate()
             self?.userMoved = true
             self?.view.dock = .floating
         }
@@ -411,6 +422,10 @@ final class OverlayWindow {
 
     func hide() {
         overlayArea = .null
+        slide?.invalidate()
+        slide = nil
+        shifted = false
+        lastCaret = nil
         userMoved = false // focus lost: the next field starts from its default placement
         animation?.invalidate()
         animation = nil
@@ -427,6 +442,7 @@ final class OverlayWindow {
     func show(at axFrame: CGRect, sameField: Bool = false) {
         if userMoved && sameField { return }
         userMoved = false
+        if !sameField { lastCaret = nil }
         guard let primary = NSScreen.screens.first else { return }
         let s = Self.size
         // AX y grows downward from the primary screen's top edge; Cocoa y grows upward from its bottom edge.
@@ -467,11 +483,76 @@ final class OverlayWindow {
             x = max(v.minX, min(x, v.maxX - s))
             y = max(v.minY, min(y, v.maxY - s))
         }
-        anchor = NSPoint(x: x, y: y)
+        slide?.invalidate()
+        baseAnchor = NSPoint(x: x, y: y)
+        shifted = caretIsUnderButton()
+        restX = shifted ? steppedAsideX() : x
+        anchor = NSPoint(x: restX, y: y)
         applyLayout()
         updateOverlayArea()
         panel.orderFrontRegardless()
         DebugLog.write("overlay placed at \(Int(x)),\(Int(y)) size \(Int(s)) design=\(dock == .floating ? 1 : 2)")
+    }
+
+    // MARK: Stepping aside for the caret
+
+    /// The typing caret moved (AX coordinates), or nil when it is unknown. While it is under the button the button
+    /// slides one button width to the right so the text stays visible, and it slides back once the caret has left.
+    func avoid(caret: CGRect?) {
+        lastCaret = caret
+        guard !userMoved, panel.isVisible, !isBusy else { return }
+        let wanted = caretIsUnderButton()
+        let target = wanted ? steppedAsideX() : baseAnchor.x
+        // Also follows the caret while it keeps moving under the button, so the gap to it stays the same.
+        guard wanted != shifted || abs(target - restX) > 0.5 else { return }
+        shifted = wanted
+        restX = target
+        slideAnchor(to: target)
+    }
+
+    /// Whether the caret is at the button's default place (judged there, not where the button is now, so it does not
+    /// flip back and forth around its own new position).
+    private func caretIsUnderButton() -> Bool {
+        guard let caret = lastCaret, let primary = NSScreen.screens.first else { return false }
+        let s = Self.size
+        let button = CGRect(x: baseAnchor.x, y: primary.frame.height - (baseAnchor.y + s), width: s, height: s)
+            .insetBy(dx: -6, dy: -4)
+        return button.intersects(caret.insetBy(dx: -2, dy: 0))
+    }
+
+    /// Where the button goes when the caret is under it: its left edge `caretGap` to the right of the caret (one button
+    /// width to the right of the default place when the caret is unknown), never left of the default place, and kept
+    /// on the screen.
+    private func steppedAsideX() -> CGFloat {
+        let s = Self.size
+        var x = max(baseAnchor.x, (lastCaret?.maxX ?? baseAnchor.x + s - Self.caretGap) + Self.caretGap)
+        let probe = NSRect(x: baseAnchor.x, y: baseAnchor.y, width: s, height: s)
+        if let screen = NSScreen.screens.first(where: { $0.frame.intersects(probe) }) { x = min(x, screen.visibleFrame.maxX - s) }
+        return max(baseAnchor.x, x)
+    }
+
+    private func slideAnchor(to x: CGFloat) {
+        slideFrom = anchor.x
+        slideTo = x
+        slideStart = Date()
+        guard slide == nil else { return }
+        let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.slideTick() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        slide = timer
+    }
+
+    private func slideTick() {
+        let t = min(1, Date().timeIntervalSince(slideStart) / Self.slideDuration)
+        let eased = 1 - pow(1 - CGFloat(t), 3)
+        anchor.x = slideFrom + (slideTo - slideFrom) * eased
+        applyLayout()
+        updateOverlayArea()
+        if t >= 1 {
+            slide?.invalidate()
+            slide = nil
+        }
     }
 
     private func applyLayout() {

@@ -6,6 +6,7 @@ import AppKit
 final class ParaphraseController {
     private let settings: Settings
     private let tracker = FocusTracker()
+    private let caret = CaretTracker()
     private let overlay = OverlayWindow()
     private let bubble = BubbleWindow()
     private let threadWatcher = ThreadWatcher()
@@ -30,6 +31,7 @@ final class ParaphraseController {
             self.request?.cancel()
         }
         tracker.onChange = { [weak self] target in self?.targetChanged(target) }
+        caret.onChange = { [weak self] box in self?.overlay.avoid(caret: box) }
         bubble.onClose = { [weak self] in
             guard let self else { return }
             DebugLog.write("summary bubble closed (previewing=\(self.previewing))")
@@ -50,6 +52,7 @@ final class ParaphraseController {
 
     func start() {
         tracker.start()
+        caret.start()
         threadWatcher.start()
     }
 
@@ -77,6 +80,7 @@ final class ParaphraseController {
         // Same field as before (just moved or resized): a button the user dragged stays where they put it.
         let sameField = target != nil && current != nil && CFEqual(current!.element, target!.element)
         current = target
+        caret.follow(target?.element)
         if let target { overlay.show(at: target.frame, sameField: sameField) } else { overlay.hide() }
     }
 

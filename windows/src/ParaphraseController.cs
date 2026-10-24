@@ -26,6 +26,7 @@ namespace Quili
         ThreadPane? _threadPane;
         bool _summarizing, _summaryDismissed; // a summary is being made / its close button was clicked meanwhile
         readonly FocusTracker _tracker = new();
+        readonly CaretTracker _caret = new();
         TextTarget? _current;
         CancellationTokenSource? _cts;
         bool _writing; // once the field is being written, cancelling would leave it half-replaced
@@ -44,6 +45,7 @@ namespace Quili
                 _cts?.Cancel();
             };
             _tracker.TargetChanged += t => _dispatcher.BeginInvoke(() => OnTargetChanged(t));
+            _caret.CaretChanged += c => _dispatcher.BeginInvoke(() => _overlay.Avoid(c));
             _bubble.CloseRequested += () =>
             {
                 // Clicked before the summary finished: stop the request too, and let the fade finish the job.
@@ -64,6 +66,7 @@ namespace Quili
         public void Start()
         {
             _tracker.Start();
+            _caret.Start();
             _threadWatcher.Start();
         }
 
@@ -80,6 +83,7 @@ namespace Quili
         public void Dispose()
         {
             _tracker.Dispose();
+            _caret.Dispose();
             _threadWatcher.Dispose();
         }
 
@@ -104,6 +108,7 @@ namespace Quili
             // Same field as before (just moved or resized): a button the user dragged stays where they put it.
             bool sameField = target != null && _current != null && FocusTracker.SameElement(_current.Element, target.Element);
             _current = target;
+            _caret.Follow(target?.Element);
             if (target == null) _overlay.HideOverlay();
             else _overlay.ShowAt(target.Bounds, sameField);
         }
