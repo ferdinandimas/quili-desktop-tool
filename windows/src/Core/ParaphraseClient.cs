@@ -38,10 +38,10 @@ namespace Quili.Core
         /// <summary>
         /// Runs the action on the server. <paramref name="onText"/> (optional) receives the rewritten text so
         /// far while the model is still writing it (each call replaces the previous one); the return value is
-        /// the final, authoritative text. <paramref name="style"/> (a tone preset) replaces the saved instruction for paraphrase only.
+        /// the final, authoritative text. The paraphrase instruction is <see cref="Settings.EffectiveStyle"/>.
         /// </summary>
         public static async Task<string> RunAsync(string text, Settings settings, TextAction action,
-            CancellationToken ct = default, Action<string>? onText = null, string? style = null)
+            CancellationToken ct = default, Action<string>? onText = null)
         {
             var apiKey = settings.ApiKey;
             // With the mock toggle on, every action is answered by the built-in mock, which needs neither a
@@ -74,7 +74,7 @@ namespace Quili.Core
             {
                 TextAction.TranslateToEnglish => JsonSerializer.Serialize(new { text, target_language = "English", stream = true }),
                 TextAction.SummarizeThread => JsonSerializer.Serialize(new { text, stream = true }),
-                _ => JsonSerializer.Serialize(new { text, style = TextHygiene.StripLoneSurrogates(style ?? settings.EffectiveStyle), stream = true }),
+                _ => JsonSerializer.Serialize(new { text, style = TextHygiene.StripLoneSurrogates(settings.EffectiveStyle), stream = true }),
             };
 
             HttpRequestMessage NewRequest()

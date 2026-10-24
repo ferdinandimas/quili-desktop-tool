@@ -53,7 +53,7 @@ private final class ThreadButtonView: NSView {
 /// A small dark label under the button. macOS only shows native tooltips for a panel while its own app is active, and
 /// the button sits over Slack, so it draws its own: click-through and never activated.
 @MainActor
-private final class TooltipWindow {
+final class TooltipWindow {
     private static let padX: CGFloat = 9, padY: CGFloat = 5, gap: CGFloat = 6
     private let panel: NSPanel
     private let label = NSTextField(labelWithString: "")
@@ -77,15 +77,16 @@ private final class TooltipWindow {
         panel.contentView = box
     }
 
-    /// Shows `text` under `anchor` (Cocoa screen coordinates), or above it when there is no room.
-    func show(_ text: String, near anchor: NSRect) {
+    /// Shows `text` under `anchor` (Cocoa screen coordinates), or above it when there is no room (or `preferAbove`).
+    func show(_ text: String, near anchor: NSRect, preferAbove: Bool = false) {
         label.stringValue = text
         label.sizeToFit()
         let size = NSSize(width: ceil(label.frame.width) + 2 * Self.padX, height: ceil(label.frame.height) + 2 * Self.padY)
         label.frame.origin = NSPoint(x: Self.padX, y: Self.padY)
         let visible = (NSScreen.screens.first { $0.frame.intersects(anchor) } ?? NSScreen.main)?.visibleFrame ?? .zero
-        var y = anchor.minY - Self.gap - size.height
-        if y < visible.minY { y = anchor.maxY + Self.gap }
+        var y = preferAbove ? anchor.maxY + Self.gap : anchor.minY - Self.gap - size.height
+        if preferAbove, y + size.height > visible.maxY { y = anchor.minY - Self.gap - size.height }
+        if !preferAbove, y < visible.minY { y = anchor.maxY + Self.gap }
         let x = max(visible.minX, min(anchor.midX - size.width / 2, visible.maxX - size.width))
         panel.setFrame(NSRect(x: x.rounded(), y: y.rounded(), width: size.width, height: size.height), display: true)
         panel.orderFrontRegardless()

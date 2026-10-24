@@ -173,8 +173,7 @@ final class CardBorder: NSView {
     }
 }
 
-/// The row of tone chips under the instruction hint: a click puts that tone's instruction in the box, and the chip whose
-/// instruction is in the box shows as selected.
+/// The row of tone chips under the tone hint; the selected one is highlighted.
 final class ToneChips: NSView {
     private static let font = NSFont.systemFont(ofSize: 12, weight: .medium)
     static let height: CGFloat = 24, padX: CGFloat = 12, gap: CGFloat = 6
@@ -294,14 +293,13 @@ final class SettingsPanel: NSWindow {
 }
 
 @MainActor
-final class SettingsWindow: NSObject, NSTextViewDelegate {
+final class SettingsWindow: NSObject {
     private let settings: Settings
     private let window: SettingsPanel
     private let server = NSTextField()
     private let keySecure = NSSecureTextField()
     private let keyPlain = NSTextField()
     private let eye = IconButton(path: Glyph.eyeOff, side: 32, glyph: 19, color: Brand.hex(0x55625B))
-    private let styleView = NSTextView()
     private let toneChips = ToneChips()
     private let startup = CheckRow(title: "Start at login")
     private let mock = CheckRow(title: "Mock server (offline)")
@@ -389,53 +387,24 @@ final class SettingsWindow: NSObject, NSTextViewDelegate {
         keyFrame.addSubview(eye)
         y += 46 + 22
 
-        // Paraphrase instruction
+        // Paraphrase tone: the built-in instruction lives in the code, the user only picks how it should sound.
         let docBadge = BadgeView(Glyph.doc)
         docBadge.frame.origin = NSPoint(x: pad, y: y)
-        let docTitle = label("Paraphrase instruction", size: 17, weight: .semibold, color: Brand.ink)
-        docTitle.setFrameOrigin(NSPoint(x: labelX, y: y + 3))
+        let docTitle = label("Paraphrase tone", size: 17, weight: .semibold, color: Brand.ink)
+        docTitle.setFrameOrigin(NSPoint(x: labelX, y: y + (34 - docTitle.frame.height) / 2))
+        [docBadge, docTitle].forEach(content.addSubview)
+        y += 34 + 6
         let hint = NSTextField(wrappingLabelWithString:
-            "Sent to the AI as the command for every paraphrase. Examples: Make it more formal · Shorter and punchier · Friendly and casual · Translate to English · Make it 3 bullet points")
+            "How the sparkle button should sound. It is added to Quili's built-in instruction, so the meaning and the wording stay yours. Click the selected tone again to go back to the default.")
         hint.font = .systemFont(ofSize: 13.5)
         hint.textColor = Brand.muted
         let hintHeight = ceil(hint.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: fieldWidth, height: 10_000)).height ?? 36)
-        hint.frame = NSRect(x: labelX, y: y + 3 + docTitle.frame.height + 4, width: fieldWidth, height: hintHeight)
-        [docBadge, docTitle, hint].forEach(content.addSubview)
-        y = max(y + 34, hint.frame.maxY) + 12
-
-        // Tone presets: one click puts a tone's instruction in the box below.
-        let toneLabel = label("Tone", size: 13.5, color: Brand.muted)
-        toneLabel.setFrameOrigin(NSPoint(x: pad + 2, y: y + (ToneChips.height - toneLabel.frame.height) / 2))
-        toneChips.frame.origin = NSPoint(x: toneLabel.frame.maxX + 12, y: y)
-        [toneLabel, toneChips].forEach(content.addSubview)
-        y += ToneChips.height + 10
-
-        let styleFrame = frame(x: pad, y: y, width: inner, height: 148)
-        let scroll = NSScrollView(frame: NSRect(x: 18, y: 12, width: inner - 18 - 10, height: 124))
-        scroll.drawsBackground = false
-        scroll.borderType = .noBorder
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        styleView.frame = NSRect(x: 0, y: 0, width: scroll.contentSize.width, height: 124)
-        styleView.minSize = NSSize(width: 0, height: 124)
-        styleView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        styleView.isVerticallyResizable = true
-        styleView.isHorizontallyResizable = false
-        styleView.autoresizingMask = [.width]
-        styleView.textContainer?.widthTracksTextView = true
-        styleView.textContainer?.lineFragmentPadding = 0
-        styleView.textContainerInset = .zero
-        styleView.isRichText = false
-        styleView.allowsUndo = true
-        styleView.drawsBackground = false
-        styleView.font = .systemFont(ofSize: 15)
-        styleView.textColor = Brand.ink
-        styleView.insertionPointColor = Brand.ink
-        styleView.isAutomaticQuoteSubstitutionEnabled = false
-        styleView.isAutomaticDashSubstitutionEnabled = false
-        scroll.documentView = styleView
-        styleFrame.addSubview(scroll)
-        y += 148 + 20
+        hint.frame = NSRect(x: labelX, y: y, width: fieldWidth, height: hintHeight)
+        content.addSubview(hint)
+        y = hint.frame.maxY + 12
+        toneChips.frame.origin = NSPoint(x: labelX, y: y)
+        content.addSubview(toneChips)
+        y += ToneChips.height + 22
 
         // Start at login
         startup.frame.origin = NSPoint(x: pad + 2, y: y)
@@ -528,26 +497,13 @@ final class SettingsWindow: NSObject, NSTextViewDelegate {
         link.onClick = { NSWorkspace.shared.open(URL(string: AppInfo.repoUrl)!) }
         privacyLink.onClick = { [weak self] in self?.privacy.show() }
         for field in [server, keySecure, keyPlain] { field.target = self; field.action = #selector(saveFromReturn) }
-        styleView.delegate = self
-        toneChips.onSelect = { [weak self] index in self?.applyTone(Tone.all[index]) }
+        toneChips.onSelect = { [weak self] index in self?.pickTone(index) }
     }
 
-    /// A tone chip was clicked: its adjustment is added under the instruction in the box (the base instruction stays;
-    /// an empty box starts from the default one). Clicking the selected chip takes the adjustment off again.
-    private func applyTone(_ tone: Tone) {
-        let current = styleView.string
-        var base = Tone.removingAdjustment(from: current).trimmingCharacters(in: .whitespacesAndNewlines)
-        if base.isEmpty { base = Settings.defaultStyle }
-        styleView.string = tone.isApplied(to: current) ? base : tone.applied(to: base)
-        syncToneSelection()
+    /// A tone chip was clicked: it becomes the selected tone, or none when it already was (saved on Save).
+    private func pickTone(_ index: Int) {
+        toneChips.selected = toneChips.selected == index ? nil : index
     }
-
-    private func syncToneSelection() {
-        let current = styleView.string
-        toneChips.selected = Tone.all.firstIndex { $0.isApplied(to: current) }
-    }
-
-    func textDidChange(_ notification: Notification) { syncToneSelection() }
 
     func show() {
         server.stringValue = settings.serverUrl
@@ -555,14 +511,14 @@ final class SettingsWindow: NSObject, NSTextViewDelegate {
         keySecure.stringValue = key
         keyPlain.stringValue = key
         setKeyRevealed(false)
-        styleView.string = settings.style
-        syncToneSelection()
+        toneChips.selected = Tone.all.firstIndex { $0.id == settings.tone }
         startup.checked = settings.runAtStartup
         mock.checked = settings.mockMode
         logging.checked = settings.loggingEnabled
         window.center()
-        // Opened from the overlay, the app isn't frontmost: raise the window above everything and focus it.
-        window.level = .floating
+        // Opened from the overlay, the app isn't frontmost: bring the window to the front and focus it once. It stays
+        // a normal window, so clicking another app's window puts it behind that one until it is opened again.
+        window.level = .normal
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
@@ -592,7 +548,7 @@ final class SettingsWindow: NSObject, NSTextViewDelegate {
         let key = revealed ? keyPlain.stringValue : keySecure.stringValue
         settings.apiKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.serverUrl = ParaphraseClient.normalize(server.stringValue)
-        settings.style = styleView.string.trimmingCharacters(in: .whitespacesAndNewlines) // empty falls back to the default
+        settings.tone = toneChips.selected.map { Tone.all[$0].id } ?? ""
         settings.runAtStartup = startup.checked
         applyMock(mock.checked)
         applyLogging(logging.checked)
@@ -619,23 +575,6 @@ final class SettingsWindow: NSObject, NSTextViewDelegate {
                 Notifier.show("Mock server failed", error.localizedDescription)
             }
         }
-    }
-
-    // The instruction box is capped like the XAML's MaxLength: typing stops at the limit and a long paste is cut.
-    func textView(_ textView: NSTextView, shouldChangeTextIn range: NSRange, replacementString text: String?) -> Bool {
-        guard let text else { return true }
-        let current = textView.string as NSString
-        let room = Settings.maxStyleLength - (current.length - range.length)
-        if (text as NSString).length <= room { return true }
-        // Cut on a character boundary so a long paste never ends in half an emoji.
-        let pasted = text as NSString
-        var cut = max(room, 0)
-        if cut > 0, cut < pasted.length {
-            let sequence = pasted.rangeOfComposedCharacterSequence(at: cut)
-            if sequence.location < cut { cut = sequence.location }
-        }
-        if cut > 0 { textView.insertText(pasted.substring(to: cut), replacementRange: range) }
-        return false
     }
 }
 

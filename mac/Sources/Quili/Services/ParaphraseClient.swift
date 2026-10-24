@@ -30,12 +30,12 @@ enum ParaphraseClient {
         try await run(text, settings: settings, action: .paraphrase)
     }
 
-    /// Runs the action on the server. `style` (paraphrase only) replaces the instruction saved in Settings, which is how
-    /// the tone chips work. `onText` (optional) receives the rewritten text so far while the model is still writing it
+    /// Runs the action on the server. A paraphrase sends the built-in instruction plus the selected tone
+    /// (`settings.effectiveStyle`). `onText` (optional) receives the rewritten text so far while the model is still writing it
     /// (each call replaces the previous one); the return value is the final, authoritative text. With "Redact secrets"
     /// on, secrets in `text` are swapped for placeholders before sending and put back into the answer (a summary only
     /// gets a label), so the server never sees them.
-    static func run(_ text: String, settings: Settings, action: TextAction, style: String? = nil,
+    static func run(_ text: String, settings: Settings, action: TextAction,
                     onText: (@MainActor (String) -> Void)? = nil) async throws -> String {
         let apiKey = settings.apiKey
         // With the mock toggle on, every action is answered by the built-in mock, which needs neither a server URL
@@ -90,8 +90,7 @@ enum ParaphraseClient {
         case .translateToEnglish: body = ["text": outgoing, "target_language": "English", "stream": true]
         case .summarizeThread: body = ["text": outgoing, "stream": true]
         case .paraphrase:
-            body = ["text": outgoing, "style": style.map { String($0.prefix(Settings.maxStyleLength)) } ?? settings.effectiveStyle,
-                    "stream": true]
+            body = ["text": outgoing, "style": settings.effectiveStyle, "stream": true]
         }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 

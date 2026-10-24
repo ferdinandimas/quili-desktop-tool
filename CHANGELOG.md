@@ -5,6 +5,9 @@ All notable changes to Quili. Versions follow the `VERSION` file; the newest cha
 ## Unreleased
 
 ### Fixed
+- **The Settings and Privacy & apps windows no longer stay on top of everything (macOS).** They come to the front
+  when you open them; after that they behave like normal windows and go behind another app's window when you click
+  it. Windows already worked this way.
 - **The ✦ button no longer covers the text you type.** When the typing caret reached the button (for example at the
   bottom-right of a text field) the button sat on top of the characters being typed. Quili now follows the caret
   and slides the button to the right of it, with a 5 px gap, and slides it back to its usual place once the caret
@@ -16,11 +19,11 @@ All notable changes to Quili. Versions follow the `VERSION` file; the newest cha
 
 ### Added
 - **Tone button in the pill.** The pill has a new **Tone** button, right of the Settings gear. Hover it and a small
-  bar offers **Formal**, **Casual**, **Shorter** and **Fix grammar**; one click paraphrases the text with your
-  **Paraphrase instruction** plus a one-line tone adjustment, so the base instruction still applies and only the
-  tone changes. The same four tones are in Settings, above the instruction box: click one to add its adjustment
-  under your instruction (click it again to take it off; Save keeps it). The tone bar
-  and the closable bubbles show the normal pointer on macOS. macOS and Windows.
+  bar offers **Formal**, **Casual**, **Shorter** and **Fix grammar**. A click selects that tone, highlights it, and
+  paraphrases with it; the ✦ button keeps using it afterwards. The tone is added to Quili's built-in instruction, so
+  the meaning and the wording stay yours and only the tone changes. **Settings → Paraphrase tone** has the same four
+  chips (click the selected one again to go back to the default). The tone bar and the closable bubbles show the
+  normal pointer on macOS. macOS and Windows.
 
   ![The Tone button in the pill, with its bar of tones](docs/images/tone-button.png)
 
@@ -50,6 +53,12 @@ All notable changes to Quili. Versions follow the `VERSION` file; the newest cha
 - Build guide for both platforms and `build.sh` usage in the README.
 
 ### Changed
+- **The Paraphrase instruction box is gone from Settings.** The base instruction now lives in the app, and you
+  choose a tone instead (see the Tone button). An instruction you had typed before is no longer used. macOS and
+  Windows.
+- Every button of the pill now has its own tooltip: **Settings**, **Tone**, **Translate to English**,
+  **Paraphrase** (the green button keeps **Text Tool** / **Cancel**). On macOS they now also show while another app
+  is in front. macOS and Windows.
 - The Settings and Privacy & apps windows have a green outline, so they are easy to tell apart when both are open.
   macOS and Windows.
 - Paraphrase and translate keep the original line breaks and blank lines, and the whitespace around the text,

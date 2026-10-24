@@ -1,8 +1,8 @@
 import Foundation
 
-/// The one-click rewrite tones (the Tone button's bar and the chips in Settings). A tone never replaces the paraphrase
-/// instruction: its adjustment is appended to it, so the base instruction (grammar, flow, "keep the wording close")
-/// still applies and only the tone changes.
+/// The rewrite tones (the Tone button's bar and the chips in Settings). The selected one is a setting. A tone never
+/// replaces the built-in paraphrase instruction (`Settings.baseInstruction`): its adjustment is appended to it, so the
+/// base (grammar, flow, "keep the wording close") still applies and only the tone changes.
 struct Tone {
     let id: String
     let label: String
@@ -23,26 +23,12 @@ struct Tone {
     private static let separator = "\n\n"
 
     /// `base` followed by this tone's adjustment, within `limit` characters (the base is cut, never the adjustment).
-    /// Any tone adjustment already at the end of `base` is replaced.
     func applied(to base: String, limit: Int = Settings.maxStyleLength) -> String {
-        var text = Self.removingAdjustment(from: base).trimmingCharacters(in: .whitespacesAndNewlines)
+        var text = base.trimmingCharacters(in: .whitespacesAndNewlines)
         let tail = Self.separator + adjustment
         if text.count + tail.count > limit { text = String(text.prefix(max(0, limit - tail.count))).trimmingCharacters(in: .whitespacesAndNewlines) }
         return text.isEmpty ? adjustment : text + tail
     }
 
-    /// Whether `text` ends with this tone's adjustment.
-    func isApplied(to text: String) -> Bool {
-        text.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix(Self.separator + adjustment)
-    }
-
-    /// `text` without a tone adjustment at its end (the base instruction).
-    static func removingAdjustment(from text: String) -> String {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        for tone in all {
-            let tail = separator + tone.adjustment
-            if trimmed.hasSuffix(tail) { return String(trimmed.dropLast(tail.count)) }
-        }
-        return trimmed == text ? text : trimmed
-    }
+    static func find(_ id: String) -> Tone? { all.first { $0.id == id } }
 }

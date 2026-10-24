@@ -57,10 +57,10 @@ final class ParaphraseController {
             guard let self, self.request == nil, self.current != nil, !self.overlay.isBusy, Tone.all.indices.contains(index) else { return }
             let tone = Tone.all[index]
             DebugLog.write("tone chip clicked: \(tone.id)")
+            self.settings.tone = tone.id // the tone stays selected (also for the ✦ button and in Settings)
             self.toneWanted = false
             self.updateBars()
-            // The tone is added to the saved instruction, not put in its place.
-            self.request = Task { await self.run(.paraphrase, style: tone.applied(to: self.settings.effectiveStyle)) }
+            self.request = Task { await self.run(.paraphrase) }
         }
         undoBar.onSelect = { [weak self] index in
             guard let self else { return }
@@ -162,7 +162,8 @@ final class ParaphraseController {
         let tone = toneWanted && current != nil && !overlay.isBusy
         overlay.keepExpanded = tone // the pill stays open while the pointer is on the bar
         if tone {
-            if !toneBar.isShown { toneBar.show(Tone.all.map(\.label), anchor: overlay.toneArea, preferAbove: overlay.chipsPreferAbove, centered: true) }
+            if !toneBar.isShown { toneBar.show(Tone.all.map(\.label), anchor: overlay.toneArea, preferAbove: overlay.chipsPreferAbove, centered: true,
+                         selected: Tone.all.firstIndex { $0.id == settings.tone }) }
             undoBar.hide()
             return
         }
@@ -312,7 +313,7 @@ final class ParaphraseController {
         }
     }
 
-    private func run(_ action: TextAction, style: String? = nil) async {
+    private func run(_ action: TextAction) async {
         DebugLog.write("\(action) clicked (target=\(current == nil ? "none" : "set"), busy=\(overlay.isBusy))")
         // Declared first so every exit, including the guard below, frees the controller for the next click.
         defer { request = nil }
@@ -343,7 +344,7 @@ final class ParaphraseController {
 
             // The text streams into a bubble beside the button while the model writes it; the field itself is
             // only touched once the final text is in.
-            let result = try await ParaphraseClient.run(field.text, settings: settings, action: action, style: style) { [weak self] partial in
+            let result = try await ParaphraseClient.run(field.text, settings: settings, action: action) { [weak self] partial in
                 guard let self, self.previewing else { return }
                 self.bubble.show(partial, above: self.overlay.frame)
             }

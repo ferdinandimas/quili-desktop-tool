@@ -5,32 +5,29 @@ using System.Linq;
 namespace Quili.Core
 {
     /// <summary>
-    /// The one-click tones (the Tone button's bar and the chips in Settings). A tone never replaces the paraphrase
-    /// instruction: its adjustment is appended to it, so the base instruction (grammar, flow, "keep the wording close")
-    /// still applies and only the tone changes.
+    /// The paraphrase tones (the Tone button's bar and the chips in Settings). The selected tone is a setting; it never
+    /// replaces the built-in instruction: its adjustment is appended to it, so that instruction (grammar, flow, "keep
+    /// the wording close") still applies and only the tone changes.
     /// </summary>
     public static class Tone
     {
+        const string Separator = "\n\n";
+
         /// <summary>Adjustment: the line appended to the base instruction, after a blank line.</summary>
         public sealed record Preset(string Id, string Label, string Adjustment)
         {
             /// <summary>
             /// <paramref name="baseInstruction"/> followed by this tone's adjustment, within <paramref name="limit"/> characters
-            /// (the base is cut, never the adjustment). A tone adjustment already at the end of the base is replaced.
+            /// (the base is cut, never the adjustment).
             /// </summary>
             public string AppliedTo(string baseInstruction, int limit = Settings.MaxStyleLength)
             {
-                var text = RemoveAdjustment(baseInstruction).Trim();
+                var text = baseInstruction.Trim();
                 var tail = Separator + Adjustment;
                 if (text.Length + tail.Length > limit) text = text[..Math.Max(0, limit - tail.Length)].Trim();
                 return text.Length == 0 ? Adjustment : text + tail;
             }
-
-            /// <summary>Whether <paramref name="text"/> ends with this tone's adjustment.</summary>
-            public bool IsAppliedTo(string text) => text.Trim().EndsWith(Separator + Adjustment, StringComparison.Ordinal);
         }
-
-        const string Separator = "\n\n";
 
         public static readonly IReadOnlyList<Preset> Presets = new[]
         {
@@ -46,16 +43,14 @@ namespace Quili.Core
 
         public static IReadOnlyList<string> Labels => Presets.Select(p => p.Label).ToArray();
 
-        /// <summary>The text without a tone adjustment at its end (the base instruction).</summary>
-        public static string RemoveAdjustment(string text)
+        /// <summary>The preset with this id, or null (empty or unknown ids mean "no tone").</summary>
+        public static Preset? FindById(string? id) => Presets.FirstOrDefault(p => p.Id == id);
+
+        /// <summary>The index of the preset with this id in <see cref="Presets"/>, or null.</summary>
+        public static int? IndexOf(string? id)
         {
-            var trimmed = text.Trim();
-            foreach (var preset in Presets)
-            {
-                var tail = Separator + preset.Adjustment;
-                if (trimmed.EndsWith(tail, StringComparison.Ordinal)) return trimmed[..^tail.Length];
-            }
-            return trimmed == text ? text : trimmed;
+            for (int i = 0; i < Presets.Count; i++) if (Presets[i].Id == id) return i;
+            return null;
         }
     }
 }

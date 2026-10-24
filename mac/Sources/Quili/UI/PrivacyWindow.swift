@@ -171,7 +171,7 @@ final class PrivacyWindow: NSObject {
         onlyListed.checked = settings.appFilterMode == AppFilter.onlyMode
         appsView.string = settings.appFilterList
         window.center()
-        window.level = .floating
+        window.level = .normal // raised once below; a normal window, so other apps' windows can cover it later
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()

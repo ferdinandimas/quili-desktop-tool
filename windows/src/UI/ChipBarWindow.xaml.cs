@@ -17,7 +17,8 @@ namespace Quili.UI
     {
         const double GapDip = 6, ChipSpacingDip = 6;
 
-        static readonly Brush TextBrush = Frozen("#1F2A24"), HoverTextBrush = Frozen("#1B7F3A"), HoverBrush = Frozen("#E4F4E9");
+        static readonly Brush TextBrush = Frozen("#1F2A24"), HoverTextBrush = Frozen("#1B7F3A"), HoverBrush = Frozen("#E4F4E9"),
+            SelectedBorderBrush = Frozen("#3DBE4A");
 
         readonly IntPtr _hwnd;
         string _shown = ""; // the chips currently built, so showing the same bar again does not rebuild it
@@ -52,24 +53,31 @@ namespace Quili.UI
 
         void Card_MouseLeave(object sender, MouseEventArgs e) => HoverChanged?.Invoke(false);
 
-        void Build(IReadOnlyList<string> chips)
+        void Build(IReadOnlyList<string> chips, int? selected)
         {
             Row.Children.Clear();
             for (int i = 0; i < chips.Count; i++)
             {
                 int index = i;
-                var label = new TextBlock { Text = chips[i], FontSize = 12.5, Foreground = TextBrush, VerticalAlignment = VerticalAlignment.Center };
+                bool isSelected = selected == i; // the tone in use: tint, green ink text and a green border
+                var label = new TextBlock { Text = chips[i], FontSize = 12.5, Foreground = isSelected ? HoverTextBrush : TextBrush, VerticalAlignment = VerticalAlignment.Center };
                 var chip = new Border
                 {
                     Child = label,
-                    Padding = new Thickness(10, 5, 10, 5),
+                    Padding = new Thickness(9, 4, 9, 4),
+                    BorderThickness = new Thickness(1),
+                    BorderBrush = isSelected ? SelectedBorderBrush : Brushes.Transparent,
                     CornerRadius = new CornerRadius(7),
-                    Background = Brushes.Transparent,
+                    Background = isSelected ? HoverBrush : Brushes.Transparent,
                     Cursor = Cursors.Hand,
                     Margin = new Thickness(i == 0 ? 0 : ChipSpacingDip, 0, 0, 0),
                 };
                 chip.MouseEnter += (_, _) => { chip.Background = HoverBrush; label.Foreground = HoverTextBrush; };
-                chip.MouseLeave += (_, _) => { chip.Background = Brushes.Transparent; label.Foreground = TextBrush; };
+                chip.MouseLeave += (_, _) =>
+                {
+                    chip.Background = isSelected ? HoverBrush : Brushes.Transparent;
+                    label.Foreground = isSelected ? HoverTextBrush : TextBrush;
+                };
                 chip.MouseLeftButtonUp += (_, _) => ChipClicked?.Invoke(index);
                 Row.Children.Add(chip);
             }
@@ -78,13 +86,13 @@ namespace Quili.UI
         /// <summary>
         /// Shows <paramref name="chips"/> right-aligned (or, with <paramref name="centered"/>, centred horizontally) above
         /// <paramref name="anchor"/> (screen pixels), or below it when <paramref name="preferAbove"/> is false or there is
-        /// no room; kept inside the screen's work area.
+        /// no room; kept inside the screen's work area. The chip at <paramref name="selected"/> (if any) is drawn as the one in use.
         /// </summary>
-        public void Show(IReadOnlyList<string> chips, System.Drawing.Rectangle anchor, bool preferAbove, bool centered = false)
+        public void Show(IReadOnlyList<string> chips, System.Drawing.Rectangle anchor, bool preferAbove, bool centered = false, int? selected = null)
         {
             if (anchor.IsEmpty || chips.Count == 0) return;
-            var key = string.Join("\u001f", chips);
-            if (key != _shown) { Build(chips); _shown = key; }
+            var key = string.Join("\u001f", chips) + "\u001e" + selected;
+            if (key != _shown) { Build(chips, selected); _shown = key; }
 
             if (!IsVisible) Show();
 

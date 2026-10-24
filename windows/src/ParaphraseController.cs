@@ -59,8 +59,11 @@ namespace Quili
             _toneBar.ChipClicked += index =>
             {
                 HideToneBar();
-                // The tone is added to the saved instruction, not put in its place.
-                if (index >= 0 && index < Tone.Presets.Count) _ = RunAsync(TextAction.Paraphrase, Tone.Presets[index].AppliedTo(_settings.EffectiveStyle));
+                // The chosen tone becomes the paraphrase tone (a setting, also used by the sparkle button) and runs right away.
+                if (index < 0 || index >= Tone.Presets.Count) return;
+                _settings.Tone = Tone.Presets[index].Id;
+                try { _settings.Save(); } catch (Exception ex) { DebugLog.Write($"saving the tone failed: {ex.GetType().Name}: {ex.Message}"); }
+                _ = RunAsync(TextAction.Paraphrase);
             };
             _undoBar.ChipClicked += index => { if (index == 0) _ = UndoAsync(); else ToggleOriginal(); };
             _tracker.AppAllowed = names => AppFilter.Allows(names, _settings.AppFilterMode, _settings.AppFilterList);
@@ -158,7 +161,7 @@ namespace Quili
                 if (!_toneBar.IsShown && _current != null && !_overlay.IsBusy && !_overlay.ToneArea.IsEmpty)
                 {
                     HideUndoBar(); // same spot: the tone chips take over until they hide again
-                    _toneBar.Show(Tone.Labels, _overlay.ToneArea, _overlay.ChipsPreferAbove, centered: true);
+                    _toneBar.Show(Tone.Labels, _overlay.ToneArea, _overlay.ChipsPreferAbove, centered: true, selected: Tone.IndexOf(_settings.Tone));
                     _overlay.KeepExpanded = true; // the pill stays open while the pointer is on the bar
                 }
             }
@@ -327,8 +330,8 @@ namespace Quili
             }
         }
 
-        /// <summary>Runs <paramref name="action"/> on the focused field; <paramref name="style"/> (a tone preset) replaces the saved paraphrase instruction.</summary>
-        async Task RunAsync(TextAction action, string? style = null)
+        /// <summary>Runs <paramref name="action"/> on the focused field.</summary>
+        async Task RunAsync(TextAction action)
         {
             var target = _current;
             DebugLog.Write($"{action} clicked (target={(target == null ? "none" : "set")}, busy={_overlay.IsBusy})");
@@ -358,7 +361,7 @@ namespace Quili
                     partial => _dispatcher.BeginInvoke(() =>
                     {
                         if (previewing && !cts.IsCancellationRequested) _bubble.ShowText(partial, _overlay.Area);
-                    }), style);
+                    }));
                 previewing = false;
                 _bubble.HideBubble();
 

@@ -10,19 +10,17 @@ namespace Quili.Core
 {
     public class Settings
     {
-        public const string DefaultStyle =
+        /// <summary>Quili's built-in paraphrase instruction; the selected <see cref="Tone"/> is added to it. Lives only in code.</summary>
+        public const string BaseInstruction =
             "Polish the provided text to improve grammar, verb tenses, clarity, and natural flow while preserving the original meaning, tone, and intent.\n\nKeep the wording and sentence structure as close to the original as possible, making only necessary adjustments. Use natural, conversational English without making it overly formal or complicated.\n\nReturn only the revised text, without explanations or additional commentary.";
-        // Earlier defaults: anyone still on one of these never customised it and moves to the current default.
-        static readonly string[] LegacyDefaultStyles =
-        {
-            "Keep the meaning, improve clarity and flow, and keep a natural tone.",
-            "Paraphrase it with clearly different wording while keeping the meaning and a natural tone.",
-        };
+        /// <summary>The server accepts an instruction of at most this many characters.</summary>
         public const int MaxStyleLength = 1000;
 
         public string ApiKeyProtected { get; set; } = "";
         public string ServerUrl { get; set; } = "";
-        public string Style { get; set; } = DefaultStyle;
+
+        /// <summary>The id of the selected paraphrase tone (see <see cref="Core.Tone"/>); empty = no tone, the built-in instruction as it is.</summary>
+        public string Tone { get; set; } = "";
         public bool RunAtStartup { get; set; }
 
         /// <summary>Whether <see cref="DebugLog"/> writes anything (the "Write debug log" setting); on by default.</summary>
@@ -73,19 +71,19 @@ namespace Quili.Core
             }
         }
 
-        /// <summary>The instruction sent to the server as the paraphrase command (never empty, length-capped).</summary>
+        /// <summary>The instruction sent to the server as the paraphrase command: the built-in one, with the selected tone's adjustment added (never empty, length-capped).</summary>
         [JsonIgnore]
         public string EffectiveStyle
         {
             get
             {
-                var s = (Style ?? "").Trim();
-                if (s.Length == 0) return DefaultStyle;
+                var preset = Core.Tone.FindById(Tone);
+                var s = preset == null ? BaseInstruction : preset.AppliedTo(BaseInstruction);
                 return s.Length > MaxStyleLength ? s[..MaxStyleLength] : s;
             }
         }
 
-        /// <summary>First launch after the rename: carry the old app's settings (server URL, instruction, API key, startup entry) over.</summary>
+        /// <summary>First launch after the rename: carry the old app's settings (server URL, API key, startup entry) over.</summary>
         static void MigrateFromParaphraseTool()
         {
             try
@@ -106,11 +104,8 @@ namespace Quili.Core
             {
                 if (File.Exists(FilePath))
                 {
-                    var loaded = JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath)) ?? new Settings();
-                    // Move users who never changed the default to the current one.
-                    if (string.IsNullOrWhiteSpace(loaded.Style) || Array.IndexOf(LegacyDefaultStyles, loaded.Style.Trim()) >= 0)
-                        loaded.Style = DefaultStyle;
-                    return loaded;
+                    // An old "style" entry (the instruction box that no longer exists) is simply ignored.
+                    return JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath)) ?? new Settings();
                 }
             }
             catch (Exception) { }

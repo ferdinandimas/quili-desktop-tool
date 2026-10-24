@@ -17,16 +17,17 @@ namespace Quili.UI
         readonly Settings _settings;
         readonly List<(Border Chip, TextBlock Label, Tone.Preset Preset)> _toneChips = new();
         readonly HashSet<Border> _hoveredChips = new();
+        string _tone = ""; // the selected tone's id (empty = none); written to the settings on Save
 
         public SettingsWindow(Settings settings)
         {
             InitializeComponent();
             _settings = settings;
+            _tone = Tone.FindById(settings.Tone)?.Id ?? "";
             BuildToneChips();
             VersionText.Text = $"Version {AppInfo.Version}";
             KeyBox.Password = settings.ApiKey;
             ServerBox.Text = ParaphraseClient.NormalizeServerUrl(settings.ServerUrl);
-            StyleBox.Text = settings.Style;
             StartupBox.IsChecked = settings.RunAtStartup;
             MockBox.IsChecked = settings.MockMode;
             LogBox.IsChecked = settings.LoggingEnabled;
@@ -51,7 +52,7 @@ namespace Quili.UI
             e.Handled = true;
         }
 
-        /// <summary>One small pill per tone preset above the instruction box; clicking one adds its adjustment under the instruction in the box (clicking the selected one takes it off).</summary>
+        /// <summary>One small pill per tone preset; a click selects that tone (the selected one is deselected by another click), kept in the window until Save.</summary>
         void BuildToneChips()
         {
             for (int i = 0; i < Tone.Presets.Count; i++)
@@ -72,12 +73,8 @@ namespace Quili.UI
                 chip.MouseLeave += (_, _) => { _hoveredChips.Remove(chip); RefreshToneChips(); };
                 chip.MouseLeftButtonUp += (_, _) =>
                 {
-                    var current = StyleBox.Text;
-                    var baseText = Tone.RemoveAdjustment(current).Trim();
-                    if (baseText.Length == 0) baseText = Settings.DefaultStyle;
-                    var text = preset.IsAppliedTo(current) ? baseText : preset.AppliedTo(baseText);
-                    StyleBox.Text = text.Length > StyleBox.MaxLength ? text.Substring(0, StyleBox.MaxLength) : text;
-                    StyleBox.CaretIndex = StyleBox.Text.Length;
+                    _tone = _tone == preset.Id ? "" : preset.Id;
+                    RefreshToneChips();
                 };
                 _toneChips.Add((chip, label, preset));
                 ToneRow.Children.Add(chip);
@@ -85,20 +82,18 @@ namespace Quili.UI
             RefreshToneChips();
         }
 
-        /// <summary>White with a line border; hovered: green tint and ink; selected (the box ends with its adjustment): tint, ink and a green border.</summary>
+        /// <summary>White with a line border; hovered: green tint and ink; selected: tint, ink and a green border.</summary>
         void RefreshToneChips()
         {
             foreach (var (chip, label, preset) in _toneChips)
             {
-                bool selected = preset.IsAppliedTo(StyleBox.Text), hovered = _hoveredChips.Contains(chip);
+                bool selected = preset.Id == _tone, hovered = _hoveredChips.Contains(chip);
                 bool tinted = selected || hovered;
                 chip.Background = (Brush)FindResource(tinted ? "GreenTint" : "WhiteBrushForChips");
                 chip.BorderBrush = (Brush)FindResource(selected ? "Green" : "Line");
                 label.Foreground = (Brush)FindResource(tinted ? "GreenInk" : "Ink");
             }
         }
-
-        void StyleBox_TextChanged(object sender, TextChangedEventArgs e) => RefreshToneChips();
 
         /// <summary>Secret redaction and the per-app list live in their own window; they save themselves.</summary>
         void PrivacyLink_Click(object sender, RoutedEventArgs e) => new PrivacyWindow(_settings) { Owner = this }.ShowDialog();
@@ -138,7 +133,7 @@ namespace Quili.UI
             var key = KeyPlain.Visibility == Visibility.Visible ? KeyPlain.Text : KeyBox.Password;
             _settings.ApiKey = key.Trim();
             _settings.ServerUrl = ParaphraseClient.NormalizeServerUrl(ServerBox.Text);
-            _settings.Style = string.IsNullOrWhiteSpace(StyleBox.Text) ? Settings.DefaultStyle : StyleBox.Text.Trim();
+            _settings.Tone = _tone;
             _settings.RunAtStartup = StartupBox.IsChecked == true;
             ApplyMock(MockBox.IsChecked == true);
             ApplyLogging(LogBox.IsChecked == true);

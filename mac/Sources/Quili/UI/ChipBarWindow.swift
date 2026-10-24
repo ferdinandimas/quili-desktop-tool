@@ -11,6 +11,8 @@ private final class ChipBarView: NSView {
     private static let font = NSFont.systemFont(ofSize: 12, weight: .medium)
 
     var chips: [String] = [] { didSet { hovered = nil; needsDisplay = true } }
+    /// The chip shown as selected (the tone in use), if any.
+    var selected: Int? { didSet { needsDisplay = true } }
     var onSelect: ((Int) -> Void)?
     var onHover: ((Bool) -> Void)?
     private var hovered: Int?
@@ -81,12 +83,21 @@ private final class ChipBarView: NSView {
         card.stroke()
 
         for (i, rect) in chipRects().enumerated() {
-            let isHovered = hovered == i
-            if isHovered {
+            let isHovered = hovered == i, isSelected = selected == i
+            if isHovered || isSelected {
+                let pill = NSBezierPath(roundedRect: rect, xRadius: rect.height / 2, yRadius: rect.height / 2)
                 Brand.greenTint.setFill()
-                NSBezierPath(roundedRect: rect, xRadius: rect.height / 2, yRadius: rect.height / 2).fill()
+                pill.fill()
+                if isSelected {
+                    let outline = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: rect.height / 2, yRadius: rect.height / 2)
+                    outline.lineWidth = 1
+                    Brand.green.setStroke()
+                    outline.stroke()
+                }
             }
-            let attributes: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: isHovered ? Brand.greenInk : Brand.ink]
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: Self.font, .foregroundColor: isHovered || isSelected ? Brand.greenInk : Brand.ink,
+            ]
             let label = chips[i] as NSString
             let size = label.size(withAttributes: attributes)
             label.draw(at: NSPoint(x: rect.minX + Self.chipPadX, y: rect.midY - size.height / 2), withAttributes: attributes)
@@ -121,9 +132,10 @@ final class ChipBarWindow {
     }
 
     /// Shows `chips` above `anchor` (Cocoa screen coordinates, usually the overlay's frame), right-aligned with it,
-    /// or below it when `preferAbove` is false or there is no room. `centered` centres it on `anchor` instead.
-    func show(_ chips: [String], anchor: NSRect, preferAbove: Bool, centered: Bool = false) {
+    /// or below it when `preferAbove` is false or there is no room. `centered` centres it on `anchor` instead; `selected` is the chip shown as in use.
+    func show(_ chips: [String], anchor: NSRect, preferAbove: Bool, centered: Bool = false, selected: Int? = nil) {
         view.chips = chips
+        view.selected = selected
         let size = ChipBarView.size(for: chips)
         let visible = (NSScreen.screens.first { $0.frame.intersects(anchor) } ?? NSScreen.main)?.visibleFrame ?? .zero
         var x = centered ? anchor.midX - size.width / 2 : anchor.maxX - size.width

@@ -16,6 +16,8 @@ private final class OverlayView: NSView {
     var onSettings: (() -> Void)?
     /// The pointer moved onto (true) or off (false) the Tone button.
     var onToneHover: ((Bool) -> Void)?
+    /// The tooltip text for the part under the pointer, or nil when there is none (the pointer left, or is pressing).
+    var onTooltip: ((String?) -> Void)?
     /// Dragging: called once when a drag starts, then with each movement in screen points (Cocoa coordinates).
     var onDragStart: (() -> Void)?
     var onDrag: ((CGFloat, CGFloat) -> Void)?
@@ -49,6 +51,7 @@ private final class OverlayView: NSView {
             startHoverAnimation()
             updateCursor()
             if (hovered == .tone) != (oldValue == .tone) { onToneHover?(hovered == .tone) }
+            onTooltip?(hovered.map(tooltipText) ?? nil)
         }
     }
     private var pressed: Region? { didSet { if pressed != oldValue { startHoverAnimation() } } }
@@ -69,10 +72,38 @@ private final class OverlayView: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     // The sparkle paraphrases and EN translates to English; the round button ("Text Tool") only cancels a running request.
+    /// What each part is called, shown as its tooltip. The round button reads "Cancel" while a request runs.
+    private func tooltipText(_ region: Region) -> String? {
+        switch region {
+        case .settings: return "Settings"
+        case .tone: return "Tone"
+        case .translate: return "Translate to English"
+        case .paraphrase: return "Paraphrase"
+        case .circle: return busy ? "Cancel" : "Text Tool"
+        }
+    }
+
+    /// The hovered part's rectangle in Cocoa screen coordinates (nil when nothing is hovered).
+    var hoveredScreenRect: NSRect? {
+        guard let hovered, let window else { return nil }
+        let h = bounds.height, w = Self.actionWidth
+        let x: CGFloat
+        switch hovered {
+        case .circle: x = bounds.width - h
+        case .paraphrase: x = paraphraseMinX
+        case .translate: x = paraphraseMinX - w
+        case .tone: x = paraphraseMinX - 2 * w
+        case .settings: x = paraphraseMinX - 3 * w
+        }
+        let width = hovered == .circle ? h : w
+        return window.convertToScreen(convert(NSRect(x: x, y: 0, width: width, height: h), to: nil))
+    }
+
     override func mouseDown(with event: NSEvent) {
         dragOrigin = NSEvent.mouseLocation
         dragLast = dragOrigin
         dragging = false
+        onTooltip?(nil)
         if busy {
             if hovered == .circle { pressed = .circle }
             return
@@ -168,49 +199,6 @@ private final class OverlayView: NSView {
     }
 
     private var paraphraseMinX: CGFloat { bounds.width - bounds.height - Self.actionWidth }
-
-    // One tooltip over the whole view whose text depends on which part is hovered.
-    override func setFrameSize(_ newSize: NSSize) {
-        super.setFrameSize(newSize)
-        registerToolTip()
-    }
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        registerToolTip()
-    }
-    private func registerToolTip() {
-        removeAllToolTips()
-        addToolTip(bounds, owner: self, userData: nil)
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds,
-                                       options: [.mouseEnteredAndExited, .mouseMoved, .cursorUpdate, .activeAlways, .inVisibleRect],
-                                       owner: self, userInfo: nil))
-    }
-    override func mouseEntered(with event: NSEvent) {
-        updateCursor()
-        onHover?(true)
-        mouseMoved(with: event)
-    }
-    override func mouseMoved(with event: NSEvent) {
-        updateCursor()
-        let region = region(at: convert(event.locationInWindow, from: nil))
-        if busy {
-            if region != .circle { cancelReady = true }
-            hovered = cancelReady && region == .circle ? .circle : nil
-        } else {
-            hovered = region
-        }
-    }
-    override func mouseExited(with event: NSEvent) {
-        cancelReady = true
-        hovered = nil
-        pressed = nil
-        onHover?(false)
-    }
 
     override func draw(_ dirtyRect: NSRect) {
         let h = bounds.height
@@ -331,20 +319,6 @@ private final class OverlayView: NSView {
     }
 }
 
-extension OverlayView: NSViewToolTipOwner {
-    func view(_ view: NSView, stringForToolTip tag: NSView.ToolTipTag, point: NSPoint,
-              userData data: UnsafeMutableRawPointer?) -> String {
-        if busy { return hovered == .circle ? "Cancel" : "" }
-        switch region(at: point) {
-        case .settings: return "Settings"
-        case .tone: return "Tone"
-        case .translate: return "Translate to English"
-        case .paraphrase: return "Paraphrase"
-        default: return "Text Tool"
-        }
-    }
-}
-
 @MainActor
 final class OverlayWindow {
     private static let size: CGFloat = 28, expandedWidth: CGFloat = 174, margin: CGFloat = 6, wideFieldFactor: CGFloat = 10, dockOffset: CGFloat = 6, edgeSearch = 14
@@ -378,6 +352,22 @@ final class OverlayWindow {
     var onAction: ((TextAction) -> Void)? { didSet { view.onAction = onAction } }
     var onCancel: (() -> Void)? { didSet { view.onCancel = onCancel } }
     var onSettings: (() -> Void)? { didSet { view.onSettings = onSettings } }
+    private let tooltip = TooltipWindow()
+    private var tooltipTask: Task<Void, Never>?
+    private static let tooltipDelay: UInt64 = 400_000_000
+    /// Tooltip text for the part of the pill under the pointer. Which side it goes on is the opposite of the tone bar's
+    /// for the Tone button, so the two never overlap.
+    private func tooltipChanged(_ text: String?) {
+        tooltipTask?.cancel()
+        tooltip.hide()
+        guard let text else { return }
+        tooltipTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: Self.tooltipDelay)
+            guard !Task.isCancelled, let self, let rect = self.view.hoveredScreenRect else { return }
+            self.tooltip.show(text, near: rect, preferAbove: text == "Tone" && !self.chipsPreferAbove)
+        }
+    }
+
     /// The pointer entered (true) or left (false) the Tone button; the tone bar follows it.
     var onToneHover: ((Bool) -> Void)? { didSet { view.onToneHover = onToneHover } }
     private(set) var isBusy = false
@@ -407,6 +397,7 @@ final class OverlayWindow {
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
 
+        view.onTooltip = { [weak self] text in self?.tooltipChanged(text) }
         view.onHover = { [weak self] inside in
             self?.hovered = inside
             self?.startAnimating()
@@ -446,6 +437,7 @@ final class OverlayWindow {
     }
 
     func hide() {
+        tooltipChanged(nil)
         overlayArea = .null
         slide?.invalidate()
         slide = nil

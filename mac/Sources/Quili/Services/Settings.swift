@@ -2,17 +2,14 @@ import Foundation
 import Security
 import ServiceManagement
 
-/// Server URL and style live in UserDefaults; the API key lives in the Keychain.
+/// Server URL and tone live in UserDefaults; the API key lives in the Keychain.
 /// Only reads and writes UserDefaults and the Keychain, which are safe to use from any thread (the app filter is read
 /// on the focus tracker's queue).
 final class Settings: @unchecked Sendable {
-    static let defaultStyle =
+    /// The built-in paraphrase instruction. It lives only here: the user picks a tone (see `Tone`), which is added to it.
+    static let baseInstruction =
         "Polish the provided text to improve grammar, verb tenses, clarity, and natural flow while preserving the original meaning, tone, and intent.\n\nKeep the wording and sentence structure as close to the original as possible, making only necessary adjustments. Use natural, conversational English without making it overly formal or complicated.\n\nReturn only the revised text, without explanations or additional commentary."
-    // Earlier defaults: anyone still on one of these never customised it and moves to the current default.
-    private static let legacyDefaultStyles = [
-        "Keep the meaning, improve clarity and flow, and keep a natural tone.",
-        "Paraphrase it with clearly different wording while keeping the meaning and a natural tone.",
-    ]
+    /// The server accepts an instruction of at most this many characters.
     static let maxStyleLength = 1000
     private let defaults = UserDefaults.standard
     private let service = "Quili", account = "apiKey"
@@ -21,16 +18,16 @@ final class Settings: @unchecked Sendable {
 
     init() { migrateFromParaphraseTool() }
 
-    /// First launch after the rename: carry the old app's server URL, instruction and API key over, once.
+    /// First launch after the rename: carry the old app's server URL and API key over, once.
     /// Reading the old Keychain item makes macOS ask once for permission (it belongs to the old app): choose Always Allow.
     private func migrateFromParaphraseTool() {
         let flag = "migratedFromParaphraseTool"
         guard !defaults.bool(forKey: flag) else { return }
         defaults.set(true, forKey: flag)
 
-        if defaults.object(forKey: "serverUrl") == nil, defaults.object(forKey: "style") == nil,
+        if defaults.object(forKey: "serverUrl") == nil,
            let old = defaults.persistentDomain(forName: Self.legacyDefaultsDomain) {
-            for key in ["serverUrl", "style"] { if let value = old[key] { defaults.set(value, forKey: key) } }
+            if let value = old["serverUrl"] { defaults.set(value, forKey: "serverUrl") }
             DebugLog.write("migrated settings from the old Paraphrase Tool app")
         }
         if apiKey.isEmpty, let legacyKey = readKey(service: Self.legacyService), !legacyKey.isEmpty {
@@ -54,17 +51,14 @@ final class Settings: @unchecked Sendable {
         set { defaults.set(newValue, forKey: "serverUrl") }
     }
 
-    var style: String {
-        get {
-            // Move users who never changed the default to the current one.
-            let stored = (defaults.string(forKey: "style") ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            return stored.isEmpty || Settings.legacyDefaultStyles.contains(stored) ? Settings.defaultStyle : stored
-        }
-        set { defaults.set(newValue.isEmpty ? Settings.defaultStyle : newValue, forKey: "style") }
+    /// The selected tone's id (see `Tone`), or empty for none: the built-in instruction as it is.
+    var tone: String {
+        get { defaults.string(forKey: "tone") ?? "" }
+        set { defaults.set(newValue, forKey: "tone") }
     }
 
-    /// The instruction sent to the server as the paraphrase command (never empty, length-capped).
-    var effectiveStyle: String { String(style.prefix(Settings.maxStyleLength)) }
+    /// The instruction sent to the server as the paraphrase command: the built-in one plus the selected tone.
+    var effectiveStyle: String { Tone.find(tone)?.applied(to: Settings.baseInstruction) ?? Settings.baseInstruction }
 
     /// Whether `DebugLog` writes anything (the "Write debug log" setting); on by default.
     var loggingEnabled: Bool {
