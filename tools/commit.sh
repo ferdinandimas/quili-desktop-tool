@@ -28,6 +28,8 @@ if git diff --cached --quiet; then
   exit 1
 fi
 
+set -- "${@/Co-Authored-By: Claude <noreply@anthropic.com>/}"
+
 args=()
 for paragraph in "$@"; do args+=(-m "$paragraph"); done
 git commit -q "${args[@]}"
