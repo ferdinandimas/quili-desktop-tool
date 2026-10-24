@@ -124,8 +124,10 @@ enum ThreadReader {
             messages.removeFirst()
         }
         guard !messages.isEmpty else { return nil }
-        DebugLog.write("context: \(messages.count) message(s), \(total) chars")
-        return (messages.joined(separator: "\n\n"), messages.count)
+        let text = messages.joined(separator: "\n\n")
+        DebugLog.write("context: \(messages.count) message(s), \(total) chars, from \(region.lines.count) lines on screen")
+        DebugLog.write("context captured:\n\(text)")
+        return (text, messages.count)
     }
 
     /// An editable text field: where the user types a message, never part of the conversation.

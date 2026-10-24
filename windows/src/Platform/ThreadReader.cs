@@ -269,8 +269,10 @@ namespace Quili.Platform
                     messages.RemoveAt(0);
                 }
                 if (messages.Count == 0) return null;
-                DebugLog.Write($"context: {messages.Count} message(s), {total} chars");
-                return new ContextText(string.Join("\n\n", messages), messages.Count);
+                string text = string.Join("\n\n", messages);
+                DebugLog.Write($"context: {messages.Count} message(s), {total} chars, from {lines.Count} lines on screen");
+                DebugLog.Write($"context captured:\n{text}");
+                return new ContextText(text, messages.Count);
             }
             catch (Exception ex)
             {

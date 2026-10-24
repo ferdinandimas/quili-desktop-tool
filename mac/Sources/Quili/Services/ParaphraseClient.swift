@@ -68,6 +68,7 @@ enum ParaphraseClient {
         if let ctx = outgoingContext, !ctx.isEmpty, settings.redactSecrets {
             outgoingContext = Redactor.mask(ctx, emails: settings.redactEmails, startingAt: (masked?.values.count ?? 0) + 1).text
         }
+        if let ctx = outgoingContext, !ctx.isEmpty { DebugLog.write("\(action) context sent (after redaction):\n\(ctx)") }
         /// Streamed text as shown to the user: originals back in place (a summary: labels).
         func shown(_ partial: String) -> String {
             guard let masked else { return partial }

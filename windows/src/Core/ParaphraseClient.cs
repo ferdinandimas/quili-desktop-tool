@@ -72,6 +72,7 @@ namespace Quili.Core
             string? outgoingContext = context == null ? null : TextHygiene.StripLoneSurrogates(context).Trim();
             if (!string.IsNullOrEmpty(outgoingContext) && settings.RedactSecrets)
                 outgoingContext = Redactor.Mask(outgoingContext, settings.RedactEmails, (masked?.Values.Count ?? 0) + 1).Text;
+            if (!string.IsNullOrEmpty(outgoingContext)) DebugLog.Write($"{action} context sent (after redaction):\n{outgoingContext}");
             DebugLog.Write($"{action} request: POST {serverUrl}{action.Path()} ({TextHygiene.Describe(text)})");
             // The default encoder escapes every non-ASCII character (\uD83D\uDE00), so emoji cannot be
             // mangled in transit; the body is also sent explicitly as UTF-8.
