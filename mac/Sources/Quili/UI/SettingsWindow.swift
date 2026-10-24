@@ -4,7 +4,7 @@ import AppKit
 // icon badges, pill-shaped fields and buttons. Sizes and colours are the XAML's. The building blocks below are shared
 // with PrivacyWindow.swift.
 
-final class FlippedView: NSView { override var isFlipped: Bool { true } }
+class FlippedView: NSView { override var isFlipped: Bool { true } }
 
 /// A view that reacts to hover, press and click. Subclasses draw themselves from `hovered` / `pressed`.
 class ClickView: NSView {
@@ -81,12 +81,13 @@ final class IconButton: ClickView {
 /// glow has room; only the button itself is clickable.
 final class PillButton: ClickView {
     static let glow: CGFloat = 24
-    private let title: String, primary: Bool
+    private let title: String, primary: Bool, icon: Bool
     private var visual: NSRect { bounds.insetBy(dx: Self.glow, dy: Self.glow) }
     override var hitRect: NSRect { visual }
 
-    init(title: String, primary: Bool, size: NSSize) {
-        self.title = title; self.primary = primary
+    /// `icon: false` leaves the floppy-disk glyph off a primary button (Close, rather than Save).
+    init(title: String, primary: Bool, size: NSSize, icon: Bool = true) {
+        self.title = title; self.primary = primary; self.icon = icon
         super.init(frame: NSRect(x: 0, y: 0, width: size.width + 2 * Self.glow, height: size.height + 2 * Self.glow))
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -120,9 +121,9 @@ final class PillButton: ClickView {
             .font: NSFont.systemFont(ofSize: 16, weight: .semibold), .foregroundColor: text,
         ])
         let size = label.size()
-        let iconWidth: CGFloat = primary ? 18 + 12 : 0
+        let iconWidth: CGFloat = primary && icon ? 18 + 12 : 0
         var x = rect.midX - (iconWidth + size.width) / 2
-        if primary {
+        if primary && icon {
             Glyph.fill(Glyph.save, in: NSRect(x: x, y: rect.midY - 9, width: 18, height: 18), color: .white)
             x += iconWidth
         }

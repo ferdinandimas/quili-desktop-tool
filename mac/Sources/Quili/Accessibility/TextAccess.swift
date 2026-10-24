@@ -43,6 +43,28 @@ enum TextAccess {
         return FieldText(text: await copySelection(), isSelection: false, range: nil)
     }
 
+    /// The text selected right now in the app `pid` (any element, editable or not): the focused element's selected
+    /// text through the Accessibility API, else what Cmd+C copies. Empty when nothing is selected.
+    static func readSelectedText(pid: pid_t) async -> String {
+        let app = AXUIElementCreateApplication(pid)
+        // Chromium / Electron / Firefox only build their accessibility tree when asked.
+        for attribute in ["AXEnhancedUserInterface", "AXManualAccessibility"] {
+            _ = AXUIElementSetAttributeValue(app, attribute as CFString, kCFBooleanTrue)
+        }
+        if let el = AX.focusedElement(ofApp: app), let sel = AX.attr(el, kAXSelectedTextAttribute) as? String,
+           !isBlank(sel), !TextHygiene.isUnreliable(sel) {
+            return sel
+        }
+        return await copySelection()
+    }
+
+    /// Whether a whole-field read is still what the field holds (so a reviewed result may replace it). A selection is
+    /// checked when it is restored, and a field whose value cannot be read is given the benefit of the doubt.
+    static func fieldUnchanged(_ field: FieldText, in el: AXUIElement) -> Bool {
+        guard !field.isSelection, let now = AX.string(el, kAXValueAttribute) else { return true }
+        return key(now) == key(field.text)
+    }
+
     /// Pastes over the original selection, or over the whole field when nothing was selected.
     static func replace(_ field: FieldText, in el: AXUIElement, with text: String) async throws {
         // The user may have moved the selection while the request ran; put it back or give up.

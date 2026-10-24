@@ -11,7 +11,7 @@ namespace Quili.Core
 {
     /// <summary>
     /// A built-in stand-in for the Senwich server, for when the real one is down: answers every Quili endpoint
-    /// (<c>/api/paraphrase</c>, <c>/api/translate</c>, <c>/api/summarize-thread</c>) with fixed, pre-written text
+    /// (<c>/api/paraphrase</c>, <c>/api/translate</c>, <c>/api/summarize-thread</c>, <c>/api/summarize-text</c>) with fixed, pre-written text
     /// whatever it is sent, on a loopback port picked by the system. It speaks the real server's wire format: with
     /// <c>"stream": true</c> it sends <c>delta</c> events (the text so far, each replacing the previous) and one
     /// <c>done</c>, otherwise plain JSON. Any other path answers 404. Started and stopped by the "Mock server
@@ -41,12 +41,25 @@ namespace Quili.Core
             "- db.pool.size: 50 -> 5\n" +
             "- order-service 2.14.0 (rolled back)";
 
+        public const string TextSummary =
+            "The text explains how the new billing export works and what still needs to be decided.\n" +
+            "\n" +
+            "Key points:\n" +
+            "- The export now runs nightly instead of weekly.\n" +
+            "- Failed rows are written to a separate **errors file**.\n" +
+            "- Finance asked for a **CSV** option next to the Excel file.\n" +
+            "\n" +
+            "Key information:\n" +
+            "- export schedule: 02:00 daily\n" +
+            "- errors file: billing-errors.csv";
+
         /// <summary>The canned answer for each endpoint.</summary>
         static readonly Dictionary<string, string> Replies = new()
         {
             ["/api/paraphrase"] = "This is a pre-generated paraphrase returned by Quili's offline mock server.",
             ["/api/translate"] = "This is a pre-generated English translation returned by Quili's offline mock server.",
             ["/api/summarize-thread"] = Summary,
+            ["/api/summarize-text"] = TextSummary,
         };
 
         const int Chunk = 12;

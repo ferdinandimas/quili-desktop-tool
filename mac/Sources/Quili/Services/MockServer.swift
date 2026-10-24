@@ -2,7 +2,7 @@ import Foundation
 import Network
 
 /// A built-in stand-in for the Senwich server, for when the real one is down: answers every Quili endpoint
-/// (`/api/paraphrase`, `/api/translate`, `/api/summarize-thread`) with fixed, pre-written text whatever it is sent,
+/// (`/api/paraphrase`, `/api/translate`, `/api/summarize-thread`, `/api/summarize-text`) with fixed, pre-written text whatever it is sent,
 /// on a loopback port picked by the system. It speaks the real server's wire format: with `"stream": true` it
 /// sends `delta` events (the text so far, each replacing the previous) and one `done`, otherwise plain JSON. Any
 /// other path answers 404. Started and stopped by the "Mock server (offline)" setting.
@@ -30,11 +30,25 @@ final class MockServer: @unchecked Sendable {
     - order-service 2.14.0 (rolled back)
     """
 
+    static let textSummary = """
+    The text explains how the new billing export works and what still needs to be decided.
+
+    Key points:
+    - The export now runs nightly instead of weekly.
+    - Failed rows are written to a separate **errors file**.
+    - Finance asked for a **CSV** option next to the Excel file.
+
+    Key information:
+    - export schedule: 02:00 daily
+    - errors file: billing-errors.csv
+    """
+
     /// The canned answer for each endpoint.
     private static let replies: [String: String] = [
         "/api/paraphrase": "This is a pre-generated paraphrase returned by Quili's offline mock server.",
         "/api/translate": "This is a pre-generated English translation returned by Quili's offline mock server.",
         "/api/summarize-thread": summary,
+        "/api/summarize-text": textSummary,
     ]
     private let chunk = 12
     private let chunkDelay: UInt64 = 50_000_000

@@ -78,6 +78,12 @@ final class Settings: @unchecked Sendable {
         set { defaults.set(newValue, forKey: "redactSecrets") }
     }
 
+    /// Whether the last 10 requests are kept on this computer for the History window (on by default).
+    var keepHistory: Bool {
+        get { defaults.object(forKey: "keepHistory") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "keepHistory") }
+    }
+
     /// Also hide email addresses when redacting.
     var redactEmails: Bool {
         get { defaults.bool(forKey: "redactEmails") }

@@ -9,12 +9,26 @@ enum TextAction {
     case translateToEnglish
     /// Summarize the Slack thread that is open in the Slack window (never written back to a field).
     case summarizeThread
+    /// Summarize any text the user selected (never written back to a field).
+    case summarizeText
+
+    /// Summaries are shown in a bubble and copied, never written to a field; their secret placeholders are only relabelled.
+    var isSummary: Bool { self == .summarizeThread || self == .summarizeText }
+
+    /// The history kind this action is recorded under.
+    var historyKind: String {
+        switch self {
+        case .paraphrase: return "paraphrase"
+        case .translateToEnglish: return "translate"
+        case .summarizeThread, .summarizeText: return "summarize"
+        }
+    }
 
     var verb: String {
         switch self {
         case .paraphrase: return "Paraphrase"
         case .translateToEnglish: return "Translate"
-        case .summarizeThread: return "Summarize"
+        case .summarizeThread, .summarizeText: return "Summarize"
         }
     }
 
@@ -23,6 +37,7 @@ enum TextAction {
         case .paraphrase: return "/api/paraphrase"
         case .translateToEnglish: return "/api/translate"
         case .summarizeThread: return "/api/summarize-thread"
+        case .summarizeText: return "/api/summarize-text"
         }
     }
 }

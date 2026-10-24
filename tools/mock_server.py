@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Stand-in for the Senwich server while it is down: answers POST /api/paraphrase, /api/translate and
-/api/summarize-thread with fixed, pre-written text, whatever it is sent. Standard library only.
+"""Stand-in for the Senwich server while it is down: answers POST /api/paraphrase, /api/translate,
+/api/summarize-thread and /api/summarize-text with fixed, pre-written text, whatever it is sent. Standard library only.
 
     python3 tools/mock_server.py [--port 8765] [--delay 0.05]
 
@@ -34,10 +34,22 @@ Key information:
 - db.pool.size: 50 -> 5
 - order-service 2.14.0 (rolled back)"""
 
+TEXT_SUMMARY = """The text explains how the new billing export works and what still needs to be decided.
+
+Key points:
+- The export now runs nightly instead of weekly.
+- Failed rows are written to a separate **errors file**.
+- Finance asked for a **CSV** option next to the Excel file.
+
+Key information:
+- export schedule: 02:00 daily
+- errors file: billing-errors.csv"""
+
 REPLIES = {
     "/api/paraphrase": "This is a pre-generated paraphrase returned by Quili's offline mock server.",
     "/api/translate": "This is a pre-generated English translation returned by Quili's offline mock server.",
     "/api/summarize-thread": SUMMARY,
+    "/api/summarize-text": TEXT_SUMMARY,
 }
 LANGUAGE = "English"
 MODEL = "mock"

@@ -1,7 +1,7 @@
 import AppKit
 
 /// Ties the pieces together: tracks the focused field, shows the overlay button on it, and runs
-/// read → paraphrase → replace when the button is clicked.
+/// read → paraphrase → review → replace when the button is clicked.
 @MainActor
 final class ParaphraseController {
     private let settings: Settings
@@ -18,14 +18,28 @@ final class ParaphraseController {
     private var previewing = false // late streamed updates must not re-show the bubble after the request ended
     private var writing = false // once the field is being written, cancelling would leave it half-replaced
 
-    // Tone chips (hover the pill) and Undo / Original (after a replace).
+    // Tone chips (hover the Tone button), History (hover the Paraphrase button) and Undo / Original (after a replace).
     private let toneBar = ChipBarWindow()
+    private let historyBar = ChipBarWindow()
     private let undoBar = ChipBarWindow()
+    private enum HoverBar { case tone, history }
+    private var wantedBar: HoverBar?
     private var toneButtonHovered = false, toneBarHovered = false
-    private var toneWanted = false
-    private var toneGrace: Task<Void, Never>?
-    private static let toneGraceMilliseconds: UInt64 = 250, undoSeconds: UInt64 = 15
-    private static let undoChips = ["Undo", "Original"]
+    private var historyButtonHovered = false, historyBarHovered = false
+    private var barGrace: Task<Void, Never>?
+    private static let barGraceMilliseconds: UInt64 = 250, undoSeconds: UInt64 = 15
+    private static let undoChips = ["Undo", "Original"], historyChips = ["History"]
+    private lazy var historyWindow = HistoryWindow(settings: settings)
+
+    /// A paraphrase or translation waiting in the review bubble for Apply: nothing has been written to the field yet.
+    private struct PendingReview {
+        let element: AXUIElement
+        let app: NSRunningApplication?
+        let field: FieldText
+        let result: String
+        let action: TextAction
+    }
+    private var pending: PendingReview?
 
     /// What the last replace changed, so it can be undone or compared: the field as it was read and what was written.
     private struct UndoState {
@@ -49,16 +63,30 @@ final class ParaphraseController {
             self?.toneButtonHovered = inside
             self?.hoverChanged()
         }
+        overlay.onParaphraseHover = { [weak self] inside in
+            self?.historyButtonHovered = inside
+            self?.hoverChanged()
+        }
         toneBar.onHover = { [weak self] inside in
             self?.toneBarHovered = inside
             self?.hoverChanged()
+        }
+        historyBar.onHover = { [weak self] inside in
+            self?.historyBarHovered = inside
+            self?.hoverChanged()
+        }
+        historyBar.onSelect = { [weak self] _ in
+            guard let self else { return }
+            self.wantedBar = nil
+            self.updateBars()
+            self.historyWindow.show()
         }
         toneBar.onSelect = { [weak self] index in
             guard let self, self.request == nil, self.current != nil, !self.overlay.isBusy, Tone.all.indices.contains(index) else { return }
             let tone = Tone.all[index]
             DebugLog.write("tone chip clicked: \(tone.id)")
             self.settings.tone = tone.id // the tone stays selected (also for the ✦ button and in Settings)
-            self.toneWanted = false
+            self.wantedBar = nil
             self.updateBars()
             self.request = Task { await self.run(.paraphrase) }
         }
@@ -76,8 +104,11 @@ final class ParaphraseController {
         }
         tracker.onChange = { [weak self] target in self?.targetChanged(target) }
         caret.onChange = { [weak self] box in self?.overlay.avoid(caret: box) }
+        bubble.onApply = { [weak self] in self?.applyPending() }
+        bubble.onDiscard = { [weak self] in self?.clearPending(fade: true) }
         bubble.onClose = { [weak self] in
             guard let self else { return }
+            if self.pending != nil { self.clearPending(fade: true); return } // the × of a review bubble discards it
             DebugLog.write("summary bubble closed (previewing=\(self.previewing))")
             // Clicked before the summary finished: stop the request too, and let the fade finish the job. Streamed
             // updates that are still on their way must not bring the bubble back.
@@ -106,7 +137,7 @@ final class ParaphraseController {
         set {
             tracker.paused = newValue
             threadWatcher.paused = newValue
-            if newValue { overlay.hide(); bubble.hide(); threadButton.hide(); toneWanted = false; clearUndo(); updateBars() }
+            if newValue { overlay.hide(); bubble.hide(); threadButton.hide(); wantedBar = nil; pending = nil; clearUndo(); updateBars() }
         }
     }
 
@@ -128,52 +159,115 @@ final class ParaphraseController {
         caret.follow(target?.element)
         if let target { overlay.show(at: target.frame, sameField: sameField) } else { overlay.hide() }
         if !sameField {
-            toneWanted = false
+            wantedBar = nil
             toneButtonHovered = false
             toneBarHovered = false
-            // Undo only makes sense in the field that was replaced.
+            historyButtonHovered = false
+            historyBarHovered = false
+            // Undo, and a review waiting for Apply, only make sense in the field they were made in.
             if let state = undoState, target == nil || !CFEqual(state.element, target!.element) { clearUndo() }
+            if let waiting = pending, target == nil || !CFEqual(waiting.element, target!.element) { clearPending() }
         }
         updateBars()
     }
 
-    // MARK: Tone chips, undo and compare
+    // MARK: Tone and history bars, review, undo and compare
 
-    /// The pointer moved over or off the Tone button or the tone bar: the bar shows at once and hides after a short
-    /// grace period, so crossing the gap between the button and the bar does not close it.
+    /// The pointer moved over or off the Tone button, the Paraphrase button or one of their bars: the bar shows at once
+    /// and hides after a short grace period, so crossing the gap between the button and the bar does not close it.
     private func hoverChanged() {
-        toneGrace?.cancel()
+        barGrace?.cancel()
         if toneButtonHovered || toneBarHovered {
-            toneWanted = true
+            wantedBar = .tone
+            updateBars()
+        } else if historyButtonHovered || historyBarHovered {
+            wantedBar = .history
             updateBars()
         } else {
-            toneGrace = Task { [weak self] in
-                await Pause.milliseconds(Self.toneGraceMilliseconds)
+            barGrace = Task { [weak self] in
+                await Pause.milliseconds(Self.barGraceMilliseconds)
                 guard let self, !Task.isCancelled else { return }
-                self.toneWanted = false
+                self.wantedBar = nil
                 self.updateBars()
             }
         }
     }
 
-    /// Shows the tone bar while it is wanted (and nothing is running), otherwise the Undo / Original bar while there
-    /// is something to undo.
+    /// Shows the tone or history bar while it is wanted (and nothing is running), otherwise the Undo / Original bar
+    /// while there is something to undo.
     private func updateBars() {
-        let tone = toneWanted && current != nil && !overlay.isBusy
-        overlay.keepExpanded = tone // the pill stays open while the pointer is on the bar
-        if tone {
-            if !toneBar.isShown { toneBar.show(Tone.all.map(\.label), anchor: overlay.toneArea, preferAbove: overlay.chipsPreferAbove, centered: true,
-                         selected: Tone.all.firstIndex { $0.id == settings.tone }) }
+        let active = current != nil && !overlay.isBusy ? wantedBar : nil
+        overlay.keepExpanded = active != nil // the pill stays open while the pointer is on the bar
+        switch active {
+        case .tone:
+            if !toneBar.isShown {
+                toneBar.show(Tone.all.map(\.label), anchor: overlay.toneArea, preferAbove: overlay.chipsPreferAbove, centered: true,
+                             selected: Tone.all.firstIndex { $0.id == settings.tone })
+            }
+            historyBar.hide(); historyBarHovered = false
             undoBar.hide()
-            return
-        }
-        toneBar.hide()
-        toneBarHovered = false
-        if undoState != nil, current != nil, !overlay.isBusy {
-            if !undoBar.isShown { undoBar.show(Self.undoChips, anchor: overlay.frame, preferAbove: overlay.chipsPreferAbove) }
-        } else {
+        case .history:
+            if !historyBar.isShown {
+                historyBar.show(Self.historyChips, anchor: overlay.paraphraseArea, preferAbove: overlay.chipsPreferAbove, centered: true)
+            }
+            toneBar.hide(); toneBarHovered = false
             undoBar.hide()
+        case nil:
+            toneBar.hide(); toneBarHovered = false
+            historyBar.hide(); historyBarHovered = false
+            if undoState != nil, current != nil, !overlay.isBusy {
+                if !undoBar.isShown { undoBar.show(Self.undoChips, anchor: overlay.frame, preferAbove: overlay.chipsPreferAbove) }
+            } else {
+                undoBar.hide()
+            }
         }
+    }
+
+    /// Drops a review that is waiting for Apply, and its bubble (faded out when `fade`).
+    private func clearPending(fade: Bool = false) {
+        guard pending != nil else { return }
+        pending = nil
+        if fade { bubble.fadeOut() } else { bubble.hide() }
+    }
+
+    /// The Apply button of the review bubble: writes the reviewed text into the field.
+    private func applyPending() {
+        guard let review = pending, request == nil, !overlay.isBusy else { return }
+        pending = nil
+        bubble.hide()
+        request = Task { await self.runApply(review) }
+    }
+
+    private func runApply(_ review: PendingReview) async {
+        defer { request = nil }
+        overlay.setBusy(true)
+        writing = true // the field is about to be written: no cancelling
+        defer {
+            writing = false
+            overlay.setBusy(false)
+            updateBars()
+        }
+        do {
+            guard await regainFocus(review.element, app: review.app, clipboardText: review.result,
+                                    what: "\(review.action.verb.lowercased())d") else { return }
+            guard TextAccess.fieldUnchanged(review.field, in: review.element) else {
+                DebugLog.write("apply: the field changed since it was read; nothing replaced")
+                Notifier.show("Text changed", "The field changed while you were reviewing, so nothing was replaced. Run it again.")
+                return
+            }
+            try await TextAccess.replace(review.field, in: review.element, with: review.result)
+            DebugLog.write("field replaced (applied after review)")
+            offerUndo(UndoState(element: review.element, app: review.app, field: review.field, result: review.result))
+        } catch {
+            DebugLog.write("\(review.action) apply failed: \(error.localizedDescription)")
+            Notifier.show("\(review.action.verb) failed", error.localizedDescription)
+        }
+    }
+
+    /// Adds a finished request to the History window's list (when "Keep my last 10 rewrites" is on).
+    private func record(_ action: TextAction, app: String?, original: String, result: String) {
+        guard settings.keepHistory else { return }
+        HistoryStore.shared.add(kind: action.historyKind, app: app, original: original, result: result)
     }
 
     /// Remembers the replace that just happened for 15 seconds.
@@ -265,6 +359,7 @@ final class ParaphraseController {
         defer { request = nil }
         summaryDismissed = false
         clearUndo() // the summary takes over the bubble
+        clearPending()
         let action = TextAction.summarizeThread
         guard AXIsProcessTrusted() else {
             Notifier.show("Accessibility permission needed",
@@ -301,6 +396,7 @@ final class ParaphraseController {
             TextAccess.setPasteboard(TextHygiene.slackMarkup(result))
             // The summary stays until it is closed with its ×.
             bubble.show(result, above: anchor, tall: true, closable: true)
+            record(action, app: app.localizedName, original: "", result: result)
             Notifier.show("Thread summarized", "The summary was copied to the clipboard.")
         } catch is CancellationError {
             if !summaryDismissed { bubble.hide() } // a dismissed bubble is already fading out
@@ -313,6 +409,8 @@ final class ParaphraseController {
         }
     }
 
+    /// The ✦ / EN / Summarize buttons of the pill. A paraphrase or translation streams into a bubble and then waits
+    /// there for Apply (the field is not touched until then); a summary stays in its bubble and is copied.
     private func run(_ action: TextAction) async {
         DebugLog.write("\(action) clicked (target=\(current == nil ? "none" : "set"), busy=\(overlay.isBusy))")
         // Declared first so every exit, including the guard below, frees the controller for the next click.
@@ -321,14 +419,16 @@ final class ParaphraseController {
         overlay.setBusy(true)
         writing = false
         clearUndo() // a new request replaces what could be undone (and reuses the bubble)
-        toneGrace?.cancel()
-        toneWanted = false
+        clearPending() // ... and a review that was still waiting
+        barGrace?.cancel()
+        wantedBar = nil
         updateBars()
         let targetApp = NSWorkspace.shared.frontmostApplication
         previewing = true
+        var keepBubble = false // a review or a summary stays on screen after the request
         defer {
             previewing = false
-            bubble.hide()
+            if !keepBubble { bubble.hide() }
             writing = false
             overlay.setBusy(false)
             updateBars()
@@ -342,25 +442,91 @@ final class ParaphraseController {
                 return
             }
 
+            if action == .summarizeText {
+                keepBubble = true
+                await summarize(text: field.text, app: targetApp?.localizedName, anchor: overlay.frame)
+                return
+            }
+
             // The text streams into a bubble beside the button while the model writes it; the field itself is
-            // only touched once the final text is in.
+            // only touched once the final text is in and the user has pressed Apply.
             let result = try await ParaphraseClient.run(field.text, settings: settings, action: action) { [weak self] partial in
                 guard let self, self.previewing else { return }
                 self.bubble.show(partial, above: self.overlay.frame)
             }
             previewing = false
-            bubble.hide()
+            record(action, app: targetApp?.localizedName, original: field.text, result: result)
 
-            guard await regainFocus(target.element, app: targetApp, clipboardText: result, what: "\(action.verb.lowercased())d") else { return }
-            writing = true
-            try await TextAccess.replace(field, in: target.element, with: result)
-            DebugLog.write("field replaced")
-            offerUndo(UndoState(element: target.element, app: targetApp, field: field, result: result))
+            pending = PendingReview(element: target.element, app: targetApp, field: field, result: result, action: action)
+            keepBubble = true
+            bubble.show(result, above: overlay.frame, tall: true, closable: true, markdown: false,
+                        highlights: TextDiff.changedRanges(original: field.text, result: result), actions: true)
         } catch is CancellationError {
             DebugLog.write("\(action) cancelled by the user")
         } catch let error as URLError where error.code == .cancelled {
             DebugLog.write("\(action) cancelled by the user")
         } catch {
+            DebugLog.write("\(action) failed: \(error.localizedDescription)")
+            Notifier.show("\(action.verb) failed", error.localizedDescription)
+        }
+    }
+
+    // MARK: Summarize selected text
+
+    /// The menu-bar item "Summarize selected text": summarizes whatever is selected in the app in front (an editable
+    /// field or not) and shows the summary next to the mouse pointer. Never writes anywhere; the summary is copied.
+    func summarizeSelectedText() {
+        guard request == nil, !overlay.isBusy else { return }
+        request = Task { await self.runMenuSummary() }
+    }
+
+    private func runMenuSummary() async {
+        defer { request = nil }
+        guard AXIsProcessTrusted() else {
+            Notifier.show("Accessibility permission needed",
+                          "Allow Quili in System Settings → Privacy & Security → Accessibility.")
+            return
+        }
+        guard let front = NSWorkspace.shared.frontmostApplication, front.processIdentifier != ProcessInfo.processInfo.processIdentifier else {
+            Notifier.show("No text selected", "Select the text you want summarized in any app, then choose Summarize selected text.")
+            return
+        }
+        let text = await TextAccess.readSelectedText(pid: front.processIdentifier)
+        DebugLog.write("menu summarize: read \(text.count) chars selected in \(front.localizedName ?? "?")")
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            Notifier.show("No text selected", "Select the text you want summarized in any app, then choose Summarize selected text.")
+            return
+        }
+        let pointer = NSEvent.mouseLocation
+        await summarize(text: text, app: front.localizedName, anchor: NSRect(x: pointer.x, y: pointer.y, width: 1, height: 1))
+    }
+
+    /// Summarizes `text` into a tall, closable bubble at `anchor` (closing it before it is done cancels the request),
+    /// copies the summary without its `**` markers and records it in the history.
+    private func summarize(text: String, app: String?, anchor: NSRect) async {
+        summaryDismissed = false
+        clearUndo()
+        clearPending()
+        let action = TextAction.summarizeText
+        previewing = true
+        defer { previewing = false }
+        bubble.show("Summarizing…", above: anchor, tall: true, closable: true)
+        do {
+            let result = try await ParaphraseClient.run(text, settings: settings, action: action) { [weak self] partial in
+                guard let self, self.previewing, !self.summaryDismissed else { return }
+                self.bubble.show(partial, above: anchor, tall: true, closable: true)
+            }
+            guard !summaryDismissed else { return } // closed while the last of it was arriving
+            TextAccess.setPasteboard(result.replacingOccurrences(of: "**", with: ""))
+            bubble.show(result, above: anchor, tall: true, closable: true)
+            record(action, app: app, original: text, result: result)
+            Notifier.show("Text summarized", "The summary was copied to the clipboard.")
+        } catch is CancellationError {
+            if !summaryDismissed { bubble.hide() }
+        } catch let error as URLError where error.code == .cancelled {
+            if !summaryDismissed { bubble.hide() }
+        } catch {
+            bubble.hide()
             DebugLog.write("\(action) failed: \(error.localizedDescription)")
             Notifier.show("\(action.verb) failed", error.localizedDescription)
         }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -11,11 +12,24 @@ namespace Quili.UI
     /// <summary>
     /// A small always-on-top card next to the overlay button that shows the rewritten text as it streams in,
     /// before it replaces the field's text. Click-through and never activated, so focus stays in the field.
+    /// When the text is final it can turn into a review: the changed words are highlighted and Discard / Apply
+    /// buttons decide whether the field is replaced.
     /// </summary>
     public partial class BubbleWindow : Window
     {
         const int WS_EX_TRANSPARENT = 0x20;
-        const double GapDip = 6, MaxHeightDip = 150, TallMaxHeightDip = 440, CloseExtraDip = 16;
+        const double GapDip = 6, MaxHeightDip = 150, TallMaxHeightDip = 440, CloseExtraDip = 16, ReviewMinWidthDip = 200;
+
+        static readonly Brush ChangedBackground = Frozen("#D6E8FF"), ChangedForeground = Frozen("#1F4E8C"),
+            ApplyBrush = Frozen("#27AE4B"), ApplyHoverBrush = Frozen("#1F9E43"),
+            DiscardBrush = Frozen("#FFFFFF"), DiscardHoverBrush = Frozen("#F1F5F2");
+
+        static Brush Frozen(string color)
+        {
+            var brush = (Brush)new BrushConverter().ConvertFromString(color)!;
+            brush.Freeze();
+            return brush;
+        }
 
         static readonly TimeSpan FadeDuration = TimeSpan.FromMilliseconds(250);
 
@@ -31,8 +45,11 @@ namespace Quili.UI
                 ex | Native.WS_EX_NOACTIVATE | Native.WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT);
         }
 
-        /// <summary>Raised when the close button of a closable bubble is clicked.</summary>
+        /// <summary>Raised when the close button of a closable bubble is clicked (and for a review's Discard button).</summary>
         public event Action? CloseRequested;
+
+        /// <summary>Raised when a review's Apply button is clicked.</summary>
+        public event Action? ApplyRequested;
 
         /// <summary>A closable bubble takes clicks; the others are click-through so they never get in the way.</summary>
         void SetClickable(bool clickable)
@@ -42,9 +59,18 @@ namespace Quili.UI
             IsHitTestVisible = clickable;
             CloseButton.Visibility = clickable ? Visibility.Visible : Visibility.Collapsed;
             Scroller.Margin = new Thickness(0, 0, clickable ? CloseExtraDip : 0, 0);
+            Footer.Visibility = Visibility.Collapsed; // only a review has the buttons (ShowReview turns them on)
+            Card.MinWidth = 0;
         }
 
         void Close_MouseLeftButtonUp(object sender, MouseButtonEventArgs e) => CloseRequested?.Invoke();
+
+        void Discard_MouseLeftButtonUp(object sender, MouseButtonEventArgs e) => CloseRequested?.Invoke();
+        void Apply_MouseLeftButtonUp(object sender, MouseButtonEventArgs e) => ApplyRequested?.Invoke();
+        void Discard_MouseEnter(object sender, MouseEventArgs e) => DiscardButton.Background = DiscardHoverBrush;
+        void Discard_MouseLeave(object sender, MouseEventArgs e) => DiscardButton.Background = DiscardBrush;
+        void Apply_MouseEnter(object sender, MouseEventArgs e) => ApplyButton.Background = ApplyHoverBrush;
+        void Apply_MouseLeave(object sender, MouseEventArgs e) => ApplyButton.Background = ApplyBrush;
 
         /// <summary>
         /// Shows <paramref name="text"/> above <paramref name="anchor"/> (screen pixels), or below it when there is no room.
@@ -61,7 +87,33 @@ namespace Quili.UI
             SetBody(text, markdown: markdown ?? tall);
             if (tall) Scroller.ScrollToTop();
             else Scroller.ScrollToBottom(); // long text: keep the newest lines in view
+            Place(anchor);
+        }
 
+        /// <summary>
+        /// Shows the finished rewrite for review: a tall, closable, non-markdown bubble in which the parts listed in
+        /// <paramref name="changed"/> (offsets into <paramref name="text"/>) have a soft blue highlight, with Discard and
+        /// Apply buttons under it. The close button and Discard raise <see cref="CloseRequested"/>, Apply raises
+        /// <see cref="ApplyRequested"/>; the field is not touched by the bubble itself.
+        /// </summary>
+        public void ShowReview(string text, IReadOnlyList<(int Start, int Length)> changed, System.Drawing.Rectangle anchor)
+        {
+            if (anchor.IsEmpty) return;
+            CancelFade();
+            SetClickable(true);
+            Footer.Visibility = Visibility.Visible;
+            DiscardButton.Background = DiscardBrush;
+            ApplyButton.Background = ApplyBrush;
+            Card.MinWidth = ReviewMinWidthDip;
+            Scroller.MaxHeight = TallMaxHeightDip;
+            SetHighlightedBody(text, changed);
+            Scroller.ScrollToTop();
+            Place(anchor);
+        }
+
+        /// <summary>Makes the window visible and puts it above <paramref name="anchor"/> (screen pixels), or below it when there is no room.</summary>
+        void Place(System.Drawing.Rectangle anchor)
+        {
             if (!IsVisible) Show();
 
             double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
@@ -114,6 +166,26 @@ namespace Quili.UI
                 if (bold) run.FontWeight = FontWeights.Bold;
                 Body.Inlines.Add(run);
             }
+        }
+
+        /// <summary>The text with the given ranges drawn on a soft blue background in blue ink; the rest as it is.</summary>
+        void SetHighlightedBody(string text, IReadOnlyList<(int Start, int Length)> changed)
+        {
+            Body.Text = "";
+            Body.Inlines.Clear();
+            int pos = 0;
+            foreach (var (start, length) in changed)
+            {
+                if (start < pos || length <= 0 || start + length > text.Length) continue; // ranges are sorted and inside the text
+                if (start > pos) Body.Inlines.Add(new System.Windows.Documents.Run(text[pos..start]));
+                Body.Inlines.Add(new System.Windows.Documents.Run(text.Substring(start, length))
+                {
+                    Background = ChangedBackground,
+                    Foreground = ChangedForeground,
+                });
+                pos = start + length;
+            }
+            if (pos < text.Length) Body.Inlines.Add(new System.Windows.Documents.Run(text[pos..]));
         }
 
         public void HideBubble()

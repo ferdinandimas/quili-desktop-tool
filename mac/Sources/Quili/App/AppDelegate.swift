@@ -45,6 +45,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         item.button?.toolTip = "Quili \(AppInfo.version)"
         let menu = NSMenu()
+        menu.addItem(withTitle: "Summarize selected text", action: #selector(summarizeSelection), keyEquivalent: "").target = self
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
         let pause = menu.addItem(withTitle: "Pause", action: #selector(togglePause(_:)), keyEquivalent: "")
         pause.target = self
@@ -69,6 +71,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openSettings() { settingsWindow.show() }
+
+    @objc private func summarizeSelection() { controller.summarizeSelectedText() }
 
     @objc private func togglePause(_ sender: NSMenuItem) {
         controller.paused.toggle()

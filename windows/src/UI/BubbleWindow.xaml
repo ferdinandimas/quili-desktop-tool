@@ -5,21 +5,46 @@
         Topmost="True" ShowInTaskbar="False" ShowActivated="False" ResizeMode="NoResize"
         Focusable="False" Width="40" Height="40">
     <!-- Live preview of the text while the model is still writing it; click-through and never takes focus, except
-         the finished summary, which has a close button and stays until it is clicked. -->
+         the finished summary and the review of a rewrite, which have a close button and stay until it is clicked.
+         A review also has Discard / Apply buttons under the text. -->
     <Border x:Name="Card" Background="White" BorderBrush="#26000000" BorderThickness="1" CornerRadius="10"
             Padding="12,9" HorizontalAlignment="Left" VerticalAlignment="Top">
         <Grid>
-            <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled"
-                          MaxHeight="150">
-                <TextBlock x:Name="Body" TextWrapping="Wrap" MaxWidth="320" FontSize="13" LineHeight="18"
-                           Foreground="#1F2A24" />
-            </ScrollViewer>
-            <Border x:Name="CloseButton" Visibility="Collapsed" HorizontalAlignment="Right" VerticalAlignment="Top"
-                    Width="16" Height="16" Margin="0,-1,-4,0" Background="Transparent" Cursor="Hand" ToolTip="Close"
-                    MouseLeftButtonUp="Close_MouseLeftButtonUp">
-                <Path Data="M3.5,3.5 L12.5,12.5 M12.5,3.5 L3.5,12.5" Stroke="#6E7B73" StrokeThickness="1.6"
-                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
-            </Border>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0">
+                <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled"
+                              MaxHeight="150">
+                    <TextBlock x:Name="Body" TextWrapping="Wrap" MaxWidth="320" FontSize="13" LineHeight="18"
+                               Foreground="#1F2A24" />
+                </ScrollViewer>
+                <Border x:Name="CloseButton" Visibility="Collapsed" HorizontalAlignment="Right" VerticalAlignment="Top"
+                        Width="16" Height="16" Margin="0,-1,-4,0" Background="Transparent" Cursor="Hand" ToolTip="Close"
+                        MouseLeftButtonUp="Close_MouseLeftButtonUp">
+                    <Path Data="M3.5,3.5 L12.5,12.5 M12.5,3.5 L3.5,12.5" Stroke="#6E7B73" StrokeThickness="1.6"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                </Border>
+            </Grid>
+
+            <!-- Review footer: 40 dip tall, two 28 dip pill buttons right-aligned with a 12 dip gap. -->
+            <StackPanel x:Name="Footer" Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right"
+                        Height="40" Visibility="Collapsed">
+                <Border x:Name="DiscardButton" Height="28" Padding="16,0" VerticalAlignment="Bottom" CornerRadius="14"
+                        Background="White" BorderBrush="#D3DAD6" BorderThickness="1.5" Cursor="Hand"
+                        MouseEnter="Discard_MouseEnter" MouseLeave="Discard_MouseLeave"
+                        MouseLeftButtonUp="Discard_MouseLeftButtonUp">
+                    <TextBlock Text="Discard" FontSize="13" FontWeight="SemiBold" Foreground="#0F1F16" VerticalAlignment="Center" />
+                </Border>
+                <Border x:Name="ApplyButton" Height="28" Padding="16,0" Margin="12,0,0,0" VerticalAlignment="Bottom" CornerRadius="14"
+                        Background="#27AE4B" Cursor="Hand"
+                        MouseEnter="Apply_MouseEnter" MouseLeave="Apply_MouseLeave"
+                        MouseLeftButtonUp="Apply_MouseLeftButtonUp">
+                    <TextBlock Text="Apply" FontSize="13" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center" />
+                </Border>
+            </StackPanel>
         </Grid>
     </Border>
 </Window>

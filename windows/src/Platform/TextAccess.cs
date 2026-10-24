@@ -57,6 +57,39 @@ namespace Quili.Platform
             return new FieldText(await CopyAsync(), false);
         }
 
+        /// <summary>
+        /// The text selected in the foreground application, whether or not it is an editable field (the tray's "Summarize
+        /// selected text"): the UI Automation focused element's selection, else Ctrl+C. Empty when nothing is selected.
+        /// </summary>
+        public static async Task<string> ReadForegroundSelectionAsync()
+        {
+            var uia = await Task.Run(() =>
+            {
+                try
+                {
+                    var el = AutomationElement.FocusedElement;
+                    return el == null ? null : TryReadUia(el).Selection;
+                }
+                catch (Exception) { return null; }
+            });
+            if (!string.IsNullOrWhiteSpace(uia) && !TextHygiene.IsUnreliable(uia)) return uia;
+            // No TextPattern (or the text came back damaged around emoji): copy it, restoring the clipboard afterwards.
+            var copied = await CopyAsync();
+            return !string.IsNullOrWhiteSpace(copied) ? copied : uia ?? "";
+        }
+
+        /// <summary>
+        /// For a review that replaces a whole field: false when the field's text is no longer what was read (the user kept
+        /// typing meanwhile). True when it is unchanged, or when the text cannot be read back to compare.
+        /// </summary>
+        public static async Task<bool> IsFieldUnchangedAsync(FieldText field, AutomationElement el)
+        {
+            if (field.IsSelection) return true; // the selection check in ReplaceAsync covers it
+            var now = await Task.Run(() => TryReadUia(el).Whole);
+            if (string.IsNullOrEmpty(now) || TextHygiene.IsUnreliable(now) || TextHygiene.IsUnreliable(field.Text)) return true;
+            return Normalize(now) == Normalize(field.Text);
+        }
+
         static (string? Selection, TextPatternRange? SelectionRange, string? Whole, bool SelectionKnown) TryReadUia(AutomationElement el)
         {
             string? selection = null, whole = null;

@@ -35,6 +35,9 @@ namespace Quili.Core
         /// <summary>Privacy: email addresses are hidden the same way (off by default).</summary>
         public bool RedactEmails { get; set; }
 
+        /// <summary>Privacy: the last 10 rewrites are kept on this computer (see <see cref="HistoryStore"/>); on by default. Turning it off and saving clears them.</summary>
+        public bool KeepHistory { get; set; } = true;
+
         /// <summary>"hide" (the default): no button in the apps listed. "only": the button shows only in the listed apps.</summary>
         public string AppFilterMode { get; set; } = AppFilter.HideMode;
 

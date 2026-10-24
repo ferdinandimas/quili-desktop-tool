@@ -24,6 +24,20 @@ private final class BubbleView: NSView {
     /// A closable bubble (the finished summary) reserves room for, and draws, a × at its top-right.
     var closable = false { didSet { needsDisplay = true } }
     var onClose: (() -> Void)?
+    /// A review bubble (a paraphrase or translation waiting to be applied): `highlights` (UTF-16 ranges of the text)
+    /// are drawn in soft blue, and a footer holds the Discard and Apply buttons.
+    var highlights: [NSRange] = [] { didSet { needsDisplay = true } }
+    var actions = false { didSet { needsDisplay = true } }
+    var onApply: (() -> Void)?
+    var onDiscard: (() -> Void)?
+    private var hoveredButton: Int? { didSet { if hoveredButton != oldValue { needsDisplay = true } } } // 0 Discard, 1 Apply
+    static let footerHeight: CGFloat = 40, buttonHeight: CGFloat = 28, minActionsWidth: CGFloat = 210
+    static let highlightFill = NSColor(srgbRed: 0xD6 / 255, green: 0xE8 / 255, blue: 0xFF / 255, alpha: 1)
+    static let highlightInk = NSColor(srgbRed: 0x1F / 255, green: 0x4E / 255, blue: 0x8C / 255, alpha: 1)
+    private var discardRect: NSRect { NSRect(x: applyRect.minX - 12 - 84, y: applyRect.minY, width: 84, height: Self.buttonHeight) }
+    private var applyRect: NSRect {
+        NSRect(x: bounds.maxX - Self.padX - 72, y: bounds.maxY - 8 - Self.buttonHeight, width: 72, height: Self.buttonHeight)
+    }
     /// How far a tall bubble whose text is longer than the card has been scrolled with the mouse wheel.
     private var scrollOffset: CGFloat = 0
     static let closeExtra: CGFloat = 16, closeSize: CGFloat = 16
@@ -41,9 +55,20 @@ private final class BubbleView: NSView {
     override func resetCursorRects() { if closable { addCursorRect(bounds, cursor: .arrow) } }
     override func cursorUpdate(with event: NSEvent) { if closable { NSCursor.arrow.set() } }
     override func mouseEntered(with event: NSEvent) { if closable { NSCursor.arrow.set() } }
-    override func mouseMoved(with event: NSEvent) { if closable { NSCursor.arrow.set() } }
+    override func mouseExited(with event: NSEvent) { hoveredButton = nil }
+    override func mouseMoved(with event: NSEvent) {
+        if closable { NSCursor.arrow.set() }
+        guard actions else { return }
+        let point = convert(event.locationInWindow, from: nil)
+        hoveredButton = applyRect.contains(point) ? 1 : (discardRect.contains(point) ? 0 : nil)
+    }
 
     override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        if actions {
+            if applyRect.contains(point) { onApply?(); return }
+            if discardRect.contains(point) { onDiscard?(); return }
+        }
         if closable, closeRect.insetBy(dx: -5, dy: -5).contains(convert(event.locationInWindow, from: nil)) { onClose?() }
     }
     override var isFlipped: Bool { true }
@@ -61,7 +86,18 @@ private final class BubbleView: NSView {
 
     /// The text as drawn. With `markdown` (a summary) text between `**` pairs is bold and the markers are hidden; an
     /// unclosed `**` (the summary is still streaming) stays bold to the end. Other text is drawn as it is.
-    static func attributed(_ text: String, markdown: Bool) -> NSAttributedString {
+    static func attributed(_ text: String, markdown: Bool, highlights: [NSRange] = []) -> NSAttributedString {
+        if !highlights.isEmpty {
+            let drawn = NSMutableAttributedString(string: text, attributes: attributes)
+            let whole = NSRange(location: 0, length: (text as NSString).length)
+            for range in highlights {
+                let clipped = NSIntersectionRange(range, whole)
+                if clipped.length > 0 {
+                    drawn.addAttributes([.backgroundColor: highlightFill, .foregroundColor: highlightInk], range: clipped)
+                }
+            }
+            return drawn
+        }
         guard markdown, text.contains("**") else { return NSAttributedString(string: text, attributes: attributes) }
         var bold: [NSAttributedString.Key: Any] = attributes
         bold[.font] = NSFont.boldSystemFont(ofSize: 13)
@@ -80,12 +116,15 @@ private final class BubbleView: NSView {
     }
 
     /// The card size that fits `text`.
-    static func size(for text: String, tall: Bool = false, closable: Bool = false, markdown: Bool? = nil) -> NSSize {
+    static func size(for text: String, tall: Bool = false, closable: Bool = false, markdown: Bool? = nil,
+                     actions: Bool = false) -> NSSize {
         let drawn = attributed(text, markdown: markdown ?? tall)
         let bounding = drawn.boundingRect(with: NSSize(width: maxTextWidth, height: .greatestFiniteMagnitude),
                                           options: [.usesLineFragmentOrigin])
         let height = min(tall ? tallTextHeight : maxTextHeight, textHeight(drawn, width: ceil(bounding.width)))
-        return NSSize(width: ceil(bounding.width) + padX * 2 + (closable ? closeExtra : 0), height: height + padY * 2)
+        let width = ceil(bounding.width) + padX * 2 + (closable ? closeExtra : 0)
+        return NSSize(width: actions ? max(width, minActionsWidth) : width,
+                      height: height + padY * 2 + (actions ? footerHeight : 0))
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -108,7 +147,8 @@ private final class BubbleView: NSView {
             Brand.muted.setStroke()
             cross.stroke()
         }
-        let drawn = Self.attributed(text, markdown: markdown)
+        if actions { inner.size.height -= Self.footerHeight }
+        let drawn = Self.attributed(text, markdown: markdown, highlights: highlights)
         let full = Self.textHeight(drawn, width: inner.width)
         NSGraphicsContext.saveGraphicsState()
         NSBezierPath(rect: inner).addClip()
@@ -117,6 +157,26 @@ private final class BubbleView: NSView {
         let top = tall ? inner.minY - scrollOffset : inner.minY + min(0, inner.height - full)
         drawn.draw(with: NSRect(x: inner.minX, y: top, width: inner.width, height: full), options: [.usesLineFragmentOrigin])
         NSGraphicsContext.restoreGraphicsState()
+        if actions { drawButtons() }
+    }
+
+    /// Discard (white, outlined) and Apply (green) in the footer; the hovered one is a shade stronger.
+    private func drawButtons() {
+        func pill(_ rect: NSRect, _ title: String, fill: NSColor, border: NSColor?, ink: NSColor) {
+            let shape = NSBezierPath(roundedRect: rect.insetBy(dx: 0.75, dy: 0.75), xRadius: rect.height / 2, yRadius: rect.height / 2)
+            fill.setFill()
+            shape.fill()
+            if let border {
+                border.setStroke()
+                shape.lineWidth = 1.5
+                shape.stroke()
+            }
+            let label = NSAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 13, weight: .semibold), .foregroundColor: ink])
+            let size = label.size()
+            label.draw(at: NSPoint(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2))
+        }
+        pill(discardRect, "Discard", fill: hoveredButton == 0 ? Brand.hex(0xF1F5F2) : .white, border: Brand.line, ink: Brand.ink)
+        pill(applyRect, "Apply", fill: hoveredButton == 1 ? Brand.hex(0x1F9E43) : Brand.greenDeep, border: nil, ink: .white)
     }
 }
 
@@ -144,18 +204,25 @@ final class BubbleWindow {
 
     /// Called when the × of a closable bubble is clicked.
     var onClose: (() -> Void)? { didSet { view.onClose = onClose } }
+    /// The Apply / Discard buttons of a review bubble.
+    var onApply: (() -> Void)? { didSet { view.onApply = onApply } }
+    var onDiscard: (() -> Void)? { didSet { view.onDiscard = onDiscard } }
 
     /// Shows `text` above `anchor` (Cocoa screen coordinates), or below it when there is no room. A `closable`
     /// bubble has a × and takes clicks (it stays until closed); the others are click-through. `markdown` (default: the
     /// same as `tall`) turns `**bold**` into bold text.
-    func show(_ text: String, above anchor: NSRect, tall: Bool = false, closable: Bool = false, markdown: Bool? = nil) {
+    /// A review bubble passes `actions: true` and the UTF-16 ranges of the changed words as `highlights`; it takes clicks.
+    func show(_ text: String, above anchor: NSRect, tall: Bool = false, closable: Bool = false, markdown: Bool? = nil,
+              highlights: [NSRange] = [], actions: Bool = false) {
         cancelFade()
+        view.highlights = highlights
+        view.actions = actions
         panel.ignoresMouseEvents = !closable
         view.closable = closable
         view.tall = tall
         view.markdown = markdown ?? tall
         view.text = text
-        let size = BubbleView.size(for: text, tall: tall, closable: closable, markdown: markdown)
+        let size = BubbleView.size(for: text, tall: tall, closable: closable, markdown: markdown, actions: actions)
         let visible = (NSScreen.screens.first { $0.frame.intersects(anchor) } ?? NSScreen.main)?.visibleFrame ?? .zero
         var x = anchor.maxX - size.width
         var y = anchor.maxY + Self.gap
@@ -196,6 +263,8 @@ final class BubbleWindow {
         cancelFade()
         view.resetScroll()
         view.closable = false
+        view.actions = false
+        view.highlights = []
         view.text = ""
         panel.orderOut(nil)
     }

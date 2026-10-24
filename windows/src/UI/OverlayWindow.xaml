@@ -5,7 +5,7 @@
         Topmost="True" ShowInTaskbar="False" ShowActivated="False" ResizeMode="NoResize"
         Focusable="False" Width="28" Height="28">
     <!-- Collapsed: just the green round button on the right. Hovered: a white pill grows to the left
-         with the action buttons (Settings, Tone, Translate to English, Paraphrase) in front of the round button. -->
+         with the action buttons (Settings, Tone, Summarize, Translate to English, Paraphrase) in front of the round button. -->
     <Grid x:Name="Root" Background="Transparent" MouseEnter="Root_MouseEnter" MouseLeave="Root_MouseLeave"
           PreviewMouseLeftButtonDown="Root_PreviewMouseDown" PreviewMouseMove="Root_PreviewMouseMove"
           PreviewMouseLeftButtonUp="Root_PreviewMouseUp">
@@ -37,6 +37,17 @@
                 </Viewbox>
             </Border>
 
+            <!-- Summarize: summarizes the field's selection (or all of its text) in a bubble; never writes to the field. -->
+            <Border x:Name="SummarizeAction" Width="36" Height="26" Opacity="0" Background="Transparent"
+                    Cursor="Hand" ToolTip="Summarize" MouseLeftButtonUp="Summarize_MouseLeftButtonUp">
+                <Viewbox Width="17" Height="17">
+                    <Canvas Width="24" Height="24">
+                        <Path Fill="#3DBE4A"
+                              Data="M3,18h12v-2H3V18z M3,6v2h18V6H3z M3,13h18v-2H3V13z" />
+                    </Canvas>
+                </Viewbox>
+            </Border>
+
             <Border x:Name="TranslateAction" Width="36" Height="26" Opacity="0" Background="Transparent"
                     Cursor="Hand" ToolTip="Translate to English" MouseLeftButtonUp="Translate_MouseLeftButtonUp">
                 <TextBlock Text="EN" Foreground="#3DBE4A" FontSize="12" FontWeight="Bold"
@@ -44,7 +55,8 @@
             </Border>
 
             <Border x:Name="ParaphraseAction" Width="36" Height="26" Opacity="0" Background="Transparent"
-                    Cursor="Hand" ToolTip="Paraphrase" MouseLeftButtonUp="Action_MouseLeftButtonUp">
+                    Cursor="Hand" ToolTip="Paraphrase" MouseLeftButtonUp="Action_MouseLeftButtonUp"
+                    MouseEnter="Paraphrase_MouseEnter" MouseLeave="Paraphrase_MouseLeave">
                 <Viewbox Width="18" Height="18">
                     <Canvas Width="24" Height="24">
                         <Path Fill="#3DBE4A"

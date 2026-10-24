@@ -7,7 +7,7 @@ private final class OverlayPanel: NSPanel {
 }
 
 /// Draws the collapsed round button, and — as `expansion` goes 0 → 1 — a white pill growing to its left
-/// with the action buttons (Settings, Tone, Translate to English, Paraphrase).
+/// with the action buttons (Settings, Tone, Summarize, Translate to English, Paraphrase).
 private final class OverlayView: NSView {
     static let actionWidth: CGFloat = 36
     var onAction: ((TextAction) -> Void)?
@@ -16,6 +16,8 @@ private final class OverlayView: NSView {
     var onSettings: (() -> Void)?
     /// The pointer moved onto (true) or off (false) the Tone button.
     var onToneHover: ((Bool) -> Void)?
+    /// The pointer moved onto (true) or off (false) the Paraphrase button; the History bar follows it.
+    var onParaphraseHover: ((Bool) -> Void)?
     /// The tooltip text for the part under the pointer, or nil when there is none (the pointer left, or is pressing).
     var onTooltip: ((String?) -> Void)?
     /// Dragging: called once when a drag starts, then with each movement in screen points (Cocoa coordinates).
@@ -44,13 +46,14 @@ private final class OverlayView: NSView {
     }
 
     // Hover / press feedback so the buttons read as clickable.
-    private enum Region: CaseIterable { case settings, tone, translate, paraphrase, circle }
+    private enum Region: CaseIterable { case settings, tone, summarize, translate, paraphrase, circle }
     private var hovered: Region? {
         didSet {
             guard hovered != oldValue else { return }
             startHoverAnimation()
             updateCursor()
             if (hovered == .tone) != (oldValue == .tone) { onToneHover?(hovered == .tone) }
+            if (hovered == .paraphrase) != (oldValue == .paraphrase) { onParaphraseHover?(hovered == .paraphrase) }
             onTooltip?(hovered.map(tooltipText) ?? nil)
         }
     }
@@ -77,6 +80,7 @@ private final class OverlayView: NSView {
         switch region {
         case .settings: return "Settings"
         case .tone: return "Tone"
+        case .summarize: return "Summarize"
         case .translate: return "Translate to English"
         case .paraphrase: return "Paraphrase"
         case .circle: return busy ? "Cancel" : "Text Tool"
@@ -92,8 +96,9 @@ private final class OverlayView: NSView {
         case .circle: x = bounds.width - h
         case .paraphrase: x = paraphraseMinX
         case .translate: x = paraphraseMinX - w
-        case .tone: x = paraphraseMinX - 2 * w
-        case .settings: x = paraphraseMinX - 3 * w
+        case .summarize: x = paraphraseMinX - 2 * w
+        case .tone: x = paraphraseMinX - 3 * w
+        case .settings: x = paraphraseMinX - 4 * w
         }
         let width = hovered == .circle ? h : w
         return window.convertToScreen(convert(NSRect(x: x, y: 0, width: width, height: h), to: nil))
@@ -136,6 +141,7 @@ private final class OverlayView: NSView {
         switch region(at: convert(event.locationInWindow, from: nil)) {
         case .settings: onSettings?()
         case .translate: onAction?(.translateToEnglish)
+        case .summarize: onAction?(.summarizeText)
         case .paraphrase: onAction?(.paraphrase)
         default: break
         }
@@ -146,8 +152,9 @@ private final class OverlayView: NSView {
         guard expansion > 0.5 else { return nil }
         if point.x >= paraphraseMinX { return .paraphrase }
         if point.x >= paraphraseMinX - Self.actionWidth { return .translate }
-        if point.x >= paraphraseMinX - 2 * Self.actionWidth { return .tone }
-        if point.x >= paraphraseMinX - 3 * Self.actionWidth { return .settings }
+        if point.x >= paraphraseMinX - 2 * Self.actionWidth { return .summarize }
+        if point.x >= paraphraseMinX - 3 * Self.actionWidth { return .tone }
+        if point.x >= paraphraseMinX - 4 * Self.actionWidth { return .settings }
         return nil
     }
 
@@ -216,10 +223,12 @@ private final class OverlayView: NSView {
             // Actions are anchored to the round button, so they slide out with the pill. Each is 36×26, centred.
             let paraphrase = NSRect(x: paraphraseMinX, y: 1, width: Self.actionWidth, height: h - 2)
             let translate = paraphrase.offsetBy(dx: -Self.actionWidth, dy: 0)
-            let tone = translate.offsetBy(dx: -Self.actionWidth, dy: 0)
+            let summarize = translate.offsetBy(dx: -Self.actionWidth, dy: 0)
+            let tone = summarize.offsetBy(dx: -Self.actionWidth, dy: 0)
             let settings = tone.offsetBy(dx: -Self.actionWidth, dy: 0)
 
-            for (region, rect) in [(Region.paraphrase, paraphrase), (Region.translate, translate), (Region.tone, tone), (Region.settings, settings)] {
+            for (region, rect) in [(Region.paraphrase, paraphrase), (Region.translate, translate), (Region.summarize, summarize),
+                                      (Region.tone, tone), (Region.settings, settings)] {
                 drawScaled(region, around: NSPoint(x: rect.midX, y: rect.midY)) {
                     // A soft green highlight fades in behind the hovered action; same corners as the pill:
                     // square on the side docked to the field, soft on the other.
@@ -236,6 +245,7 @@ private final class OverlayView: NSView {
                     case .paraphrase: glyph(Glyph.sparkle, 18)
                     case .settings: glyph(Glyph.gear, 17)
                     case .tone: glyph(Glyph.tune, 17)
+                    case .summarize: glyph(Glyph.notes, 17)
                     default:
                         let label = NSAttributedString(string: "EN", attributes: [
                             .font: NSFont.boldSystemFont(ofSize: 12), .foregroundColor: color,
@@ -321,7 +331,7 @@ private final class OverlayView: NSView {
 
 @MainActor
 final class OverlayWindow {
-    private static let size: CGFloat = 28, expandedWidth: CGFloat = 174, margin: CGFloat = 6, wideFieldFactor: CGFloat = 10, dockOffset: CGFloat = 6, edgeSearch = 14
+    private static let size: CGFloat = 28, expandedWidth: CGFloat = 210, margin: CGFloat = 6, wideFieldFactor: CGFloat = 10, dockOffset: CGFloat = 6, edgeSearch = 14
     // Time-based easing (not a fixed step per tick) so the pill glides at the display's frame rate.
     private static let expandDuration: TimeInterval = 0.23, collapseDuration: TimeInterval = 0.17
 
@@ -364,12 +374,14 @@ final class OverlayWindow {
         tooltipTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: Self.tooltipDelay)
             guard !Task.isCancelled, let self, let rect = self.view.hoveredScreenRect else { return }
-            self.tooltip.show(text, near: rect, preferAbove: text == "Tone" && !self.chipsPreferAbove)
+            self.tooltip.show(text, near: rect, preferAbove: (text == "Tone" || text == "Paraphrase") && !self.chipsPreferAbove)
         }
     }
 
     /// The pointer entered (true) or left (false) the Tone button; the tone bar follows it.
     var onToneHover: ((Bool) -> Void)? { didSet { view.onToneHover = onToneHover } }
+    /// The pointer entered (true) or left (false) the Paraphrase button; the History bar follows it.
+    var onParaphraseHover: ((Bool) -> Void)? { didSet { view.onParaphraseHover = onParaphraseHover } }
     private(set) var isBusy = false
     /// Keeps the pill open while the pointer is on the tone bar (a separate window next to it); it collapses when the
     /// pointer is off the pill and the bar.
@@ -379,9 +391,14 @@ final class OverlayWindow {
 
     /// The overlay's current frame in Cocoa screen coordinates; the preview bubble anchors to it.
     var frame: NSRect { panel.frame }
-    /// Where the Tone button is (Cocoa screen coordinates): the third cell left of the round button.
+    /// Where the Tone button is (Cocoa screen coordinates): the fourth cell left of the round button.
     var toneArea: NSRect {
-        NSRect(x: panel.frame.maxX - Self.size - 3 * OverlayView.actionWidth, y: panel.frame.minY,
+        NSRect(x: panel.frame.maxX - Self.size - 4 * OverlayView.actionWidth, y: panel.frame.minY,
+               width: OverlayView.actionWidth, height: panel.frame.height)
+    }
+    /// Where the Paraphrase button is: the cell just left of the round button.
+    var paraphraseArea: NSRect {
+        NSRect(x: panel.frame.maxX - Self.size - OverlayView.actionWidth, y: panel.frame.minY,
                width: OverlayView.actionWidth, height: panel.frame.height)
     }
 

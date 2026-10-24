@@ -9,6 +9,7 @@ final class PrivacyWindow: NSObject {
     private let window: SettingsPanel
     private let redactSecrets = CheckRow(title: "Redact secrets before sending")
     private let redactEmails = CheckRow(title: "Also redact email addresses")
+    private let keepHistory = CheckRow(title: "Keep my last 10 rewrites on this computer")
     private let onlyListed = CheckRow(title: "Only show Quili in the apps listed below")
     private let appsView = NSTextView()
 
@@ -69,7 +70,13 @@ final class PrivacyWindow: NSObject {
 
         redactEmails.frame.origin = NSPoint(x: pad + 2, y: y)
         content.addSubview(redactEmails)
-        y += 26 + 24
+        y += 26 + 16
+
+        keepHistory.frame.origin = NSPoint(x: pad + 2, y: y)
+        content.addSubview(keepHistory)
+        y += 26 + 6
+        y = note("Saved only on this computer. Turning this off and saving also clears the list.",
+                 x: pad + 2 + 26 + 14, y: y, width: inner - 2 - 26 - 14, in: content) + 24
 
         // Apps
         let appsBadge = BadgeView(Glyph.doc)
@@ -168,6 +175,7 @@ final class PrivacyWindow: NSObject {
     func show() {
         redactSecrets.checked = settings.redactSecrets
         redactEmails.checked = settings.redactEmails
+        keepHistory.checked = settings.keepHistory
         onlyListed.checked = settings.appFilterMode == AppFilter.onlyMode
         appsView.string = settings.appFilterList
         window.center()
@@ -181,6 +189,8 @@ final class PrivacyWindow: NSObject {
     private func save() {
         settings.redactSecrets = redactSecrets.checked
         settings.redactEmails = redactEmails.checked
+        settings.keepHistory = keepHistory.checked
+        if !keepHistory.checked { HistoryStore.shared.clear() }
         settings.appFilterMode = onlyListed.checked ? AppFilter.onlyMode : AppFilter.hideMode
         settings.appFilterList = appsView.string.trimmingCharacters(in: .whitespacesAndNewlines)
         DebugLog.write("privacy settings saved: redactSecrets=\(settings.redactSecrets) redactEmails=\(settings.redactEmails) appFilter=\(settings.appFilterMode) (\(AppFilter.parse(settings.appFilterList).count) entries)")

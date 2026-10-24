@@ -28,7 +28,7 @@ namespace Quili
                 catch (Exception ex) { DebugLog.Write($"mock server failed to start: {ex.GetType().Name}: {ex.Message}"); }
             }
 
-            _tray = new TrayIcon(ShowSettings, paused => _controller!.Paused = paused, Shutdown);
+            _tray = new TrayIcon(ShowSettings, () => _controller!.SummarizeSelection(), paused => _controller!.Paused = paused, Shutdown);
             _controller = new ParaphraseController(_settings, Dispatcher, _tray.Notify);
             _controller.SettingsRequested += ShowSettings;
             _controller.Start();

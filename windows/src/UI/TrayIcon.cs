@@ -5,15 +5,16 @@ using Quili.Core;
 
 namespace Quili.UI
 {
-    /// <summary>Notification-area icon with the Settings / Pause / Exit menu and balloon notices.</summary>
+    /// <summary>Notification-area icon with the Settings / Summarize selected text / Pause / Exit menu and balloon notices.</summary>
     public sealed class TrayIcon : IDisposable
     {
         readonly NotifyIcon _icon;
 
-        public TrayIcon(Action showSettings, Action<bool> pausedChanged, Action exit)
+        public TrayIcon(Action showSettings, Action summarizeSelection, Action<bool> pausedChanged, Action exit)
         {
             var menu = new ContextMenuStrip();
             menu.Items.Add("Settings…", null, (_, _) => showSettings());
+            menu.Items.Add("Summarize selected text", null, (_, _) => summarizeSelection());
             var pause = new ToolStripMenuItem("Pause") { CheckOnClick = true };
             pause.CheckedChanged += (_, _) => pausedChanged(pause.Checked);
             menu.Items.Add(pause);

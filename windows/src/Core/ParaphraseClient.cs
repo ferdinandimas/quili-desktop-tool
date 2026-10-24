@@ -23,7 +23,7 @@ namespace Quili.Core
         public static string NormalizeServerUrl(string? url)
         {
             var u = (url ?? "").Trim().TrimEnd('/');
-            foreach (var endpoint in new[] { "/api/paraphrase", "/api/translate", "/api/summarize-thread" })
+            foreach (var endpoint in new[] { "/api/paraphrase", "/api/translate", "/api/summarize-thread", "/api/summarize-text" })
                 if (u.EndsWith(endpoint, StringComparison.OrdinalIgnoreCase))
                     u = u[..^endpoint.Length].TrimEnd('/');
             return u;
@@ -73,7 +73,7 @@ namespace Quili.Core
             var body = action switch
             {
                 TextAction.TranslateToEnglish => JsonSerializer.Serialize(new { text, target_language = "English", stream = true }),
-                TextAction.SummarizeThread => JsonSerializer.Serialize(new { text, stream = true }),
+                TextAction.SummarizeThread or TextAction.SummarizeText => JsonSerializer.Serialize(new { text, stream = true }),
                 _ => JsonSerializer.Serialize(new { text, style = TextHygiene.StripLoneSurrogates(settings.EffectiveStyle), stream = true }),
             };
 
@@ -116,7 +116,7 @@ namespace Quili.Core
 
             // Streamed text and the final text get the hidden values back (a summary shows "[hidden value n]" instead).
             string Reveal(string t) => masked == null ? t
-                : action == TextAction.SummarizeThread ? Redactor.Relabel(t) : Redactor.Restore(t, masked.Values).Text;
+                : action.IsSummary() ? Redactor.Relabel(t) : Redactor.Restore(t, masked.Values).Text;
             Action<string>? shown = onText == null || masked == null ? onText : partial => onText(Reveal(partial));
 
             string result;
@@ -133,7 +133,7 @@ namespace Quili.Core
             }
 
             if (masked == null) return result;
-            if (action == TextAction.SummarizeThread) return Redactor.Relabel(result);
+            if (action.IsSummary()) return Redactor.Relabel(result);
             var (restored, allPresent) = Redactor.Restore(result, masked.Values);
             if (!allPresent)
             {

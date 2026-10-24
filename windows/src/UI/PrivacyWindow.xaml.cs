@@ -17,6 +17,7 @@ namespace Quili.UI
             _settings = settings;
             RedactBox.IsChecked = settings.RedactSecrets;
             EmailBox.IsChecked = settings.RedactEmails;
+            HistoryBox.IsChecked = settings.KeepHistory;
             OnlyBox.IsChecked = settings.AppFilterMode == AppFilter.OnlyMode;
             AppsBox.Text = settings.AppFilterList;
             ContentRendered += (_, _) => BringToFront();
@@ -43,6 +44,8 @@ namespace Quili.UI
         {
             _settings.RedactSecrets = RedactBox.IsChecked == true;
             _settings.RedactEmails = EmailBox.IsChecked == true;
+            _settings.KeepHistory = HistoryBox.IsChecked == true;
+            if (!_settings.KeepHistory) HistoryStore.Clear(); // turning it off also clears what was kept
             _settings.AppFilterMode = OnlyBox.IsChecked == true ? AppFilter.OnlyMode : AppFilter.HideMode;
             _settings.AppFilterList = AppsBox.Text.Trim();
             _settings.Save();

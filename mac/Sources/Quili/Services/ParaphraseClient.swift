@@ -19,7 +19,7 @@ enum ParaphraseClient {
     static func normalize(_ url: String) -> String {
         var u = url.trimmingCharacters(in: .whitespacesAndNewlines)
         while u.hasSuffix("/") { u.removeLast() }
-        for endpoint in ["/api/paraphrase", "/api/translate", "/api/summarize-thread"] where u.lowercased().hasSuffix(endpoint) {
+        for endpoint in ["/api/paraphrase", "/api/translate", "/api/summarize-thread", "/api/summarize-text"] where u.lowercased().hasSuffix(endpoint) {
             u = String(u.dropLast(endpoint.count))
             while u.hasSuffix("/") { u.removeLast() }
         }
@@ -65,12 +65,12 @@ enum ParaphraseClient {
         /// Streamed text as shown to the user: originals back in place (a summary: labels).
         func shown(_ partial: String) -> String {
             guard let masked else { return partial }
-            return action == .summarizeThread ? Redactor.relabel(partial) : Redactor.restore(partial, values: masked.values).text
+            return action.isSummary ? Redactor.relabel(partial) : Redactor.restore(partial, values: masked.values).text
         }
         /// The final text; a protected value the model dropped or changed means nothing may be written back.
         func finalText(_ result: String) throws -> String {
             guard let masked else { return result }
-            if action == .summarizeThread { return Redactor.relabel(result) }
+            if action.isSummary { return Redactor.relabel(result) }
             let restored = Redactor.restore(result, values: masked.values)
             guard restored.allPresent else {
                 throw ParaphraseError(message: "Some protected values (secrets) were changed by the AI, so nothing was replaced. "
@@ -88,7 +88,7 @@ enum ParaphraseClient {
         let body: [String: Any]
         switch action {
         case .translateToEnglish: body = ["text": outgoing, "target_language": "English", "stream": true]
-        case .summarizeThread: body = ["text": outgoing, "stream": true]
+        case .summarizeThread, .summarizeText: body = ["text": outgoing, "stream": true]
         case .paraphrase:
             body = ["text": outgoing, "style": settings.effectiveStyle, "stream": true]
         }

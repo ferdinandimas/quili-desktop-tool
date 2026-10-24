@@ -92,6 +92,20 @@ namespace Quili.Platform
             catch (Exception) { return null; }
         }
 
+        /// <summary>The process name of the foreground window's owner (for example "slack"), or null when it can't be read.</summary>
+        public static string? ForegroundProcessName()
+        {
+            try
+            {
+                var hwnd = Native.GetForegroundWindow();
+                if (hwnd == IntPtr.Zero) return null;
+                Native.GetWindowThreadProcessId(hwnd, out uint pid);
+                using var process = Process.GetProcessById((int)pid);
+                return process.ProcessName;
+            }
+            catch (Exception) { return null; }
+        }
+
         /// <summary>
         /// Key presses (Ctrl+A/C/V) go to the foreground window, so only act when it belongs to the element's process.
         /// Chromium apps keep a "focused element" per window, so UIA can report a field in a background window.

@@ -18,6 +18,19 @@ All notable changes to Quili. Versions follow the `VERSION` file; the newest cha
   | ![The button covers the text next to the caret](docs/images/caret-button-before.png) | ![The button sits to the right of the caret](docs/images/caret-button-after.png) |
 
 ### Added
+- **Review before replace.** Paraphrase and Translate to English no longer overwrite your text on their own. When the
+  AI is done, the bubble shows the result with the words that changed highlighted in soft blue, with **Apply** and
+  **Discard** buttons; the text is replaced only when you press Apply (× also discards). If the field changed while
+  you were reviewing, nothing is replaced. Undo works as before after Apply. macOS and Windows.
+- **Recent rewrites.** Hover the ✦ button and click **History** to open a window with your last 10 paraphrases,
+  translations and summaries (when, which app, the original and the result), each with **Copy result** and **Copy
+  original**. It is stored only on your computer; **Settings → Privacy & apps → Keep my last 10 rewrites** turns it
+  off, which also clears it, and the window has a **Clear history** button. macOS and Windows.
+- **Summarize selected text.** A new **Summarize** button in the pill, and **Summarize selected text** in the menu-bar
+  (macOS) / tray (Windows) menu, summarize whatever you selected in any app, not only Slack threads. The pill button
+  uses the selection (or the whole field) of the field you are in; the menu item also works on text you cannot type
+  in, such as a web page or an email you are reading. The summary appears in a bubble you can close and is copied to
+  the clipboard; nothing is written to your text. macOS and Windows.
 - **Tone button in the pill.** The pill has a new **Tone** button, right of the Settings gear. Hover it and a small
   bar offers **Formal**, **Casual**, **Shorter** and **Fix grammar**. A click selects that tone, highlights it, and
   paraphrases with it; the ✦ button keeps using it afterwards. The tone is added to Quili's built-in instruction, so

@@ -229,6 +229,10 @@
 
                 <CheckBox x:Name="EmailBox" Content="Also redact email addresses" Style="{StaticResource GreenCheck}" Margin="2,16,0,0" />
 
+                <CheckBox x:Name="HistoryBox" Content="Keep my last 10 rewrites on this computer" Style="{StaticResource GreenCheck}" Margin="2,16,0,0" />
+                <TextBlock Foreground="{StaticResource Muted}" TextWrapping="Wrap" FontSize="13.5" Margin="42,4,0,0"
+                           Text="Saved only on this computer. Turning this off and saving also clears the list." />
+
                 <CheckBox x:Name="OnlyBox" Content="Only show Quili in the apps listed below" Style="{StaticResource GreenCheck}" Margin="2,16,0,0" />
 
                 <Grid Margin="0,26,0,0">
