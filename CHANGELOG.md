@@ -29,6 +29,8 @@ All notable changes to Quili. Versions follow the `VERSION` file; the newest cha
   rewrite fits what is being discussed. Secrets in those messages are redacted like your own text, nothing is stored
   in History, and the review bubble says "Used 6 messages from Slack as context". Off by default; only in Slack.
   macOS and Windows.
+
+  ![The "Use the messages above as context in Slack" setting](docs/images/use-context-setting.png)
 - **The likely next button is highlighted.** If the text in the field does not look like English, a small **EN** tag
   appears on the Quili button and **Translate to English** is highlighted when the pill is open; for a long text
   (800 characters or more) it is **Summarize** instead. The tooltip adds "(suggested)". Worked out on your computer
